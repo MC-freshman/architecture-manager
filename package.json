@@ -3,12 +3,24 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "src/main.mjs",
   "description": "Standalone local architecture workspace manager",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
     "scan": "node src/cli.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "build:ui": "vite build",
+    "start": "npm run build:ui && electron ."
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "electron": "^30.5.1",
+    "vite": "^5.4.8"
   }
 }
