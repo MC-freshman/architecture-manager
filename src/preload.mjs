@@ -5,5 +5,7 @@ contextBridge.exposeInMainWorld('architectureManager', Object.freeze({
   selectWorkspace: () => ipcRenderer.invoke('workspace:select'),
   scanWorkspace: (root) => ipcRenderer.invoke('workspace:scan', root),
   previewPlatformPlan: (input) => ipcRenderer.invoke('plan:platform-view', input),
-  previewResourcePlan: (input) => ipcRenderer.invoke('plan:resource-pointer', input)
+  previewResourcePlan: (input) => ipcRenderer.invoke('plan:resource-pointer', input),
+  readDocument: (input) => ipcRenderer.invoke('document:read', input),
+  previewDocumentPlan: (input) => ipcRenderer.invoke('plan:document', input)
 }));

@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { assertWithinRoot, scanWorkspace } from '../src/inventory.mjs';
 import { buildPlatformViewPlan, buildResourcePointerPlan } from '../src/plans.mjs';
+import { buildDocumentPlan } from '../src/documents.mjs';
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'architecture-manager-'));
@@ -89,4 +91,33 @@ test('rejects a stale or unavailable resource pointer target', () => {
     targetVersion: '1.0.0',
     availableVersions: ['1.0.0']
   }), /NO_CHANGE/);
+});
+
+test('protects top-level requirements and creates a hashed document plan', () => {
+  const beforeText = '# 原文\n';
+  assert.throws(() => buildDocumentPlan({
+    workspaceRoot: 'C:/workspace',
+    relativePath: 'versions/架构基本原则.md',
+    beforeText,
+    afterText: '# 修改\n',
+    baselineSha256: 'wrong'
+  }), /DOCUMENT_BASELINE_MISMATCH/);
+  const baselineSha256 = createHash('sha256').update(beforeText, 'utf8').digest('hex');
+  assert.throws(() => buildDocumentPlan({
+    workspaceRoot: 'C:/workspace',
+    relativePath: 'versions/架构基本原则.md',
+    beforeText,
+    afterText: '# 修改\n',
+    baselineSha256
+  }), /TOP_LEVEL_CONFIRMATION_REQUIRED/);
+  const plan = buildDocumentPlan({
+    workspaceRoot: 'C:/workspace',
+    relativePath: 'versions/普通文档.md',
+    beforeText,
+    afterText: '# 修改\n',
+    baselineSha256,
+    now: '2026-09-25T00:00:00.000Z'
+  });
+  assert.equal(plan.writePerformed, false);
+  assert.equal(plan.steps[0].oldSha256, baselineSha256);
 });

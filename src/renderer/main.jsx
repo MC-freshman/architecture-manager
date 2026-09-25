@@ -21,6 +21,9 @@ function App() {
   const [message, setMessage] = useState('请选择一个架构工作区开始只读扫描。');
   const [platformView, setPlatformView] = useState({});
   const [planPreview, setPlanPreview] = useState(null);
+  const [selectedDocument, setSelectedDocument] = useState(null);
+  const [documentDraft, setDocumentDraft] = useState('');
+  const [sensitiveConfirmed, setSensitiveConfirmed] = useState(false);
 
   const scan = async (root) => {
     if (!root) return;
@@ -53,6 +56,8 @@ function App() {
     (repo.pointers || []).map((pointer) => ({ ...pointer, repository: repo.repository }))
   )), [inventory]);
 
+  const planDocuments = useMemo(() => (inventory?.architectureDocuments || []).filter((path) => /实施表|方案|台账|基本原则/.test(path)), [inventory]);
+
   const previewPlatform = async (platform) => {
     const currentEnabled = platformView[platform.id] ?? platform.directoryExists;
     const desiredEnabled = !currentEnabled;
@@ -82,6 +87,36 @@ function App() {
       setMessage(`已生成资源指针计划：${resource.repository}/${resource.resourceId}。尚未写入。`);
     } catch (error) {
       setMessage(`资源计划被拒绝：${error.message}`);
+    }
+  };
+
+  const openDocument = async (path) => {
+    try {
+      const document = await api.readDocument({ workspaceRoot: workspace, relativePath: path });
+      setSelectedDocument(document);
+      setDocumentDraft(document.content);
+      setSensitiveConfirmed(false);
+      setMessage(`已读取 ${path}，编辑仍只在本地内存中。`);
+    } catch (error) {
+      setMessage(`文档读取失败：${error.message}`);
+    }
+  };
+
+  const previewDocument = async () => {
+    if (!selectedDocument) return;
+    try {
+      const plan = await api.previewDocumentPlan({
+        workspaceRoot: workspace,
+        relativePath: selectedDocument.path,
+        beforeText: selectedDocument.content,
+        afterText: documentDraft,
+        baselineSha256: selectedDocument.sha256,
+        highSensitivityConfirmed: sensitiveConfirmed
+      });
+      setPlanPreview(plan);
+      setMessage(`已生成文档变更计划：${selectedDocument.path}。尚未写入。`);
+    } catch (error) {
+      setMessage(`文档计划被拒绝：${error.message}`);
     }
   };
 
@@ -149,6 +184,24 @@ function App() {
               {!inventory && <div className="empty">选择工作区后显示资源。</div>}
               {inventory && resources.length > 12 && <div className="muted resource-more">其余 {resources.length - 12} 项将在完整资源页展示。</div>}
             </div>
+          </section>
+          <section className="panel document-panel">
+            <div className="panel-title"><span>更新计划与文档</span><span className="muted">编辑预览</span></div>
+            <div className="document-list">
+              {planDocuments.slice(0, 10).map((path) => (
+                <button className="document-item" key={path} onClick={() => openDocument(path)}>
+                  <span>{path.replace('versions/', '')}</span>
+                  <span className="pill">{path.includes('实施表') ? 'P表' : path.includes('方案') ? '方案' : path.includes('台账') ? '台账' : '顶层要求'}</span>
+                </button>
+              ))}
+              {!inventory && <div className="empty">选择工作区后显示方案和文档。</div>}
+            </div>
+            {selectedDocument && <div className="editor-box">
+              <div className="editor-heading"><strong>{selectedDocument.path}</strong><span className="muted">SHA-256 {selectedDocument.sha256.slice(0, 12)}…</span></div>
+              <textarea value={documentDraft} onChange={(event) => setDocumentDraft(event.target.value)} spellCheck={false} />
+              {selectedDocument.sensitive && <label className="sensitive-confirm"><input type="checkbox" checked={sensitiveConfirmed} onChange={(event) => setSensitiveConfirmed(event.target.checked)} /> 我确认这是顶层治理要求的变更预览</label>}
+              <button className="small-button" onClick={previewDocument}>生成文档变更计划</button>
+            </div>}
           </section>
         </div>
         {planPreview && <section className="plan-preview">

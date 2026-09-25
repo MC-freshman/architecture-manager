@@ -51,3 +51,10 @@ code { color: #24495b; overflow: hidden; text-overflow: ellipsis; white-space: n
 .plan-preview { margin-top: 18px; padding: 20px; border: 1px solid #bedde2; border-radius: 12px; background: #fbffff; }
 .plan-meta { display: flex; align-items: center; gap: 10px; margin: 14px 0; }
 .plan-preview pre { max-height: 330px; overflow: auto; padding: 16px; border-radius: 8px; color: #d8f3f1; background: #142b38; font: 12px/1.55 Consolas, monospace; }
+.document-list { display: grid; gap: 6px; margin-top: 10px; }
+.document-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; border: 0; border-radius: 7px; padding: 9px 10px; color: #274b5b; background: #f5fafb; text-align: left; cursor: pointer; }
+.document-item:hover { background: #eaf5f7; }
+.editor-box { margin-top: 14px; padding-top: 14px; border-top: 1px solid #e7eef0; }
+.editor-heading { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 8px; font-size: 12px; }
+.editor-box textarea { width: 100%; min-height: 180px; resize: vertical; border: 1px solid #bfd5dd; border-radius: 7px; padding: 10px; color: #263e4a; background: #fcffff; font: 12px/1.5 Consolas, monospace; }
+.sensitive-confirm { display: block; margin: 9px 0; color: #76551a; font-size: 12px; }
