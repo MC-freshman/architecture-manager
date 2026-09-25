@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { listSoftware } from './software.mjs';
+import { inspectGit } from './git.mjs';
 
 export const FORMAL_TOP_LEVEL_DIRECTORIES = [
   '.workbuddy',
@@ -97,22 +98,6 @@ function findBridge(root, platform) {
   ];
   const found = candidates.find((candidate) => existsSync(candidate) && lstatSync(candidate).isFile());
   return found ? relativePath(root, found) : null;
-}
-
-function inspectGit(root) {
-  const result = { isRepository: false, branch: null, head: null, status: [], error: null };
-  const gitOptions = { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] };
-  try {
-    result.isRepository = execFileSync('git', ['-C', root, 'rev-parse', '--is-inside-work-tree'], gitOptions).trim() === 'true';
-    if (!result.isRepository) return result;
-    result.branch = execFileSync('git', ['-C', root, 'branch', '--show-current'], gitOptions).trim() || null;
-    result.head = execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], gitOptions).trim();
-    const status = execFileSync('git', ['-C', root, 'status', '--short'], gitOptions);
-    result.status = status.split(/\r?\n/).filter(Boolean);
-  } catch (error) {
-    result.error = String(error?.message ?? error);
-  }
-  return result;
 }
 
 export function scanWorkspace(workspaceRoot) {

@@ -8,6 +8,7 @@ import { assertWithinRoot, scanWorkspace } from '../src/inventory.mjs';
 import { buildPlatformViewPlan, buildResourcePointerPlan } from '../src/plans.mjs';
 import { buildDocumentPlan } from '../src/documents.mjs';
 import { buildSoftwareLaunchPlan, listSoftware } from '../src/software.mjs';
+import { backupAndRestoreFixture, buildGitPlan, scanSensitiveFiles } from '../src/git.mjs';
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'architecture-manager-'));
@@ -136,4 +137,30 @@ test('lists registered software and creates a provider-only launch plan', () => 
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('creates guarded Git plans without applying them', () => {
+  const commit = buildGitPlan({ workspaceRoot: 'C:/workspace', action: 'commit', message: 'update manager', now: '2026-09-25T00:00:00.000Z' });
+  assert.equal(commit.kind, 'git-commit');
+  assert.equal(commit.writePerformed, false);
+  assert.deepEqual(commit.steps[0].command, ['git', 'commit', '-m', 'update manager']);
+  const push = buildGitPlan({ workspaceRoot: 'C:/workspace', action: 'push', remote: 'origin' });
+  assert.equal(push.steps[0].force, false);
+  const rollback = buildGitPlan({ workspaceRoot: 'C:/workspace', action: 'rollback', commit: '0123456789abcdef0123456789abcdef01234567' });
+  assert.equal(rollback.steps[0].operation, 'revert-commit');
+  const backup = buildGitPlan({ workspaceRoot: 'C:/workspace', action: 'backup', backupName: 'before-upgrade' });
+  assert.match(backup.steps[0].destination, /before-upgrade$/);
+  assert.throws(() => buildGitPlan({ workspaceRoot: 'C:/workspace', action: 'commit', message: '' }), /COMMIT_MESSAGE_REQUIRED/);
+  assert.throws(() => buildGitPlan({ workspaceRoot: 'C:/workspace', action: 'rollback', commit: 'nope' }), /INVALID_COMMIT_SHA/);
+});
+
+test('rehearses backup and restore on a temporary fixture', () => {
+  const root = fixture();
+  writeFileSync(join(root, 'payload.txt'), 'restore-me');
+  const scan = scanSensitiveFiles(root);
+  assert.equal(scan.clean, true);
+  const result = backupAndRestoreFixture(root);
+  assert.equal(result.restored, 'restore-me');
+  assert.equal(result.writePerformed, true);
+  rmSync(root, { recursive: true, force: true });
 });

@@ -63,3 +63,13 @@ code { color: #24495b; overflow: hidden; text-overflow: ellipsis; white-space: n
 .software-main { min-width: 0; }
 .software-meta { margin-top: 6px; color: #6b7d88; font-size: 12px; }
 .software-panel { grid-column: 1 / -1; }
+.git-panel { grid-column: 1 / -1; }
+.git-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
+.git-summary > div { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.git-summary code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.scan-result { margin-top: 12px; padding: 9px 11px; border-radius: 8px; font-size: 13px; }
+.scan-result.clean { color: #13703d; background: #eaf8ef; }
+.scan-result.warning { color: #876215; background: #fff7df; }
+.finding-list { margin: 10px 0 0; padding-left: 20px; color: #6b7d88; font-size: 12px; }
+@media (max-width: 1100px) { .git-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

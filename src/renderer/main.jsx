@@ -25,6 +25,8 @@ function App() {
   const [documentDraft, setDocumentDraft] = useState('');
   const [sensitiveConfirmed, setSensitiveConfirmed] = useState(false);
   const [softwareResults, setSoftwareResults] = useState({});
+  const [gitDetails, setGitDetails] = useState(null);
+  const [sensitiveScan, setSensitiveScan] = useState(null);
 
   const scan = async (root) => {
     if (!root) return;
@@ -34,11 +36,27 @@ function App() {
       const result = await api.scanWorkspace(root);
       setWorkspace(result.workspaceRoot);
       setInventory(result);
+      setGitDetails(result.git);
       setMessage(result.errors.length === 0 ? '扫描完成，当前页面没有执行写入。' : `扫描完成，发现 ${result.errors.length} 个待处理问题。`);
     } catch (error) {
       setMessage(`扫描失败：${error.message}`);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const refreshGit = async () => {
+    if (!workspace) return;
+    try {
+      const [details, scanResult] = await Promise.all([
+        api.inspectGit(workspace),
+        api.scanSensitiveFiles(workspace)
+      ]);
+      setGitDetails(details);
+      setSensitiveScan(scanResult);
+      setMessage(`Git 状态已刷新：${details.status?.length || 0} 项改动，敏感文件扫描 ${scanResult.clean ? '通过' : `发现 ${scanResult.findings.length} 项待核对`}。`);
+    } catch (error) {
+      setMessage(`Git 状态读取失败：${error.message}`);
     }
   };
 
@@ -142,6 +160,22 @@ function App() {
     }
   };
 
+  const previewGit = async (action) => {
+    if (!workspace) return;
+    const input = { workspaceRoot: workspace, action };
+    if (action === 'commit') input.message = window.prompt('输入提交说明', '更新架构管理台') || '';
+    if (action === 'push') input.remote = window.prompt('输入远端名称', 'origin') || '';
+    if (action === 'rollback') input.commit = window.prompt('输入要回滚的提交 SHA（将生成 revert 计划）', '') || '';
+    if (action === 'backup') input.backupName = window.prompt('输入备份名称', `before-${new Date().toISOString().slice(0, 10)}`) || '';
+    try {
+      const plan = await api.previewGitPlan(input);
+      setPlanPreview(plan);
+      setMessage(`已生成 Git ${action} 计划。尚未执行任何 Git 或文件写入。`);
+    } catch (error) {
+      setMessage(`Git 计划被拒绝：${error.message}`);
+    }
+  };
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -237,6 +271,25 @@ function App() {
               })}
               {!inventory && <div className="empty">选择工作区后显示软件。</div>}
             </div>
+          </section>
+          <section className="panel git-panel">
+            <div className="panel-title"><span>Git 与备份</span><span className="muted">计划预览</span></div>
+            <div className="git-summary">
+              <div><span className="muted">分支</span><code>{gitDetails?.branch || '—'}</code></div>
+              <div><span className="muted">HEAD</span><code>{gitDetails?.head ? `${gitDetails.head.slice(0, 12)}…` : '—'}</code></div>
+              <div><span className="muted">远端</span><code>{gitDetails?.upstream || gitDetails?.remotes?.[0] || '未绑定'}</code></div>
+              <div><span className="muted">同步</span><span>{gitDetails?.ahead == null ? '未设置 upstream' : `ahead ${gitDetails.ahead} · behind ${gitDetails.behind}`}</span></div>
+              <div><span className="muted">改动</span><span>{gitDetails?.status?.length ?? '—'} 项</span></div>
+            </div>
+            <div className="git-actions">
+              <button className="small-button" onClick={refreshGit} disabled={!workspace}>刷新并扫敏感文件</button>
+              <button className="small-button" onClick={() => previewGit('commit')} disabled={!workspace}>提交计划</button>
+              <button className="small-button" onClick={() => previewGit('push')} disabled={!workspace}>推送计划</button>
+              <button className="small-button" onClick={() => previewGit('backup')} disabled={!workspace}>备份计划</button>
+              <button className="small-button" onClick={() => previewGit('rollback')} disabled={!workspace}>回滚计划</button>
+            </div>
+            {sensitiveScan && <div className={sensitiveScan.clean ? 'scan-result clean' : 'scan-result warning'}>{sensitiveScan.clean ? '敏感文件扫描通过' : `发现 ${sensitiveScan.findings.length} 项待核对`}<span className="muted"> · 所有计划仍需确认后执行</span></div>}
+            {sensitiveScan?.findings?.length > 0 && <ul className="finding-list">{sensitiveScan.findings.slice(0, 8).map((finding) => <li key={`${finding.path}-${finding.kind}`}><code>{finding.path}</code> · {finding.kind}</li>)}</ul>}
           </section>
         </div>
         {planPreview && <section className="plan-preview">
