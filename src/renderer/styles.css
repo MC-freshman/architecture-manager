@@ -35,6 +35,10 @@ code { color: #24495b; overflow: hidden; text-overflow: ellipsis; white-space: n
 .row { display: flex; justify-content: space-between; align-items: center; padding: 13px 2px; border-bottom: 1px solid #eef2f4; }
 .row:last-child { border-bottom: 0; }
 .row-name { font-weight: 600; }
+.resource-repo { margin-left: 9px; color: #82929a; font-size: 12px; }
+.resource-actions { display: flex; align-items: center; gap: 8px; }
+.small-button { border: 1px solid #bfd5dd; border-radius: 6px; padding: 5px 8px; color: #245466; background: #fff; cursor: pointer; font-size: 12px; }
+.small-button:hover { background: #eff8fa; }
 .pill { border-radius: 999px; padding: 4px 9px; font-size: 12px; }
 .pill.good { color: #13703d; background: #eaf8ef; }
 .pill.warn { color: #876215; background: #fff7df; }
@@ -43,3 +47,7 @@ code { color: #24495b; overflow: hidden; text-overflow: ellipsis; white-space: n
 .checks li { display: flex; gap: 10px; padding: 13px 2px; border-bottom: 1px solid #eef2f4; color: #3a525e; }
 .checks li:last-child { border-bottom: 0; }
 .check { color: #1f9d55; font-weight: 700; }
+.resource-more { padding-top: 12px; }
+.plan-preview { margin-top: 18px; padding: 20px; border: 1px solid #bedde2; border-radius: 12px; background: #fbffff; }
+.plan-meta { display: flex; align-items: center; gap: 10px; margin: 14px 0; }
+.plan-preview pre { max-height: 330px; overflow: auto; padding: 16px; border-radius: 8px; color: #d8f3f1; background: #142b38; font: 12px/1.55 Consolas, monospace; }

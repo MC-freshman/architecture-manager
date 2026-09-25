@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { assertWithinRoot, scanWorkspace } from '../src/inventory.mjs';
+import { buildPlatformViewPlan, buildResourcePointerPlan } from '../src/plans.mjs';
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'architecture-manager-'));
@@ -55,4 +56,37 @@ test('rejects a missing root and paths outside the selected root', () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('creates a reversible platform view plan without applying it', () => {
+  const plan = buildPlatformViewPlan({
+    workspaceRoot: 'C:/workspace',
+    platformId: 'codex',
+    currentEnabled: true,
+    desiredEnabled: false,
+    now: '2026-09-25T00:00:00.000Z'
+  });
+  assert.equal(plan.kind, 'platform-view');
+  assert.equal(plan.writePerformed, false);
+  assert.equal(plan.steps[0].operation, 'update-local-view');
+  assert.equal(plan.steps[0].newValue, false);
+});
+
+test('rejects a stale or unavailable resource pointer target', () => {
+  assert.throws(() => buildResourcePointerPlan({
+    workspaceRoot: 'C:/workspace',
+    repository: 'tool',
+    resourceId: 'demo',
+    currentVersion: '1.0.0',
+    targetVersion: '1.1.0',
+    availableVersions: ['1.0.0']
+  }), /TARGET_VERSION_UNAVAILABLE/);
+  assert.throws(() => buildResourcePointerPlan({
+    workspaceRoot: 'C:/workspace',
+    repository: 'tool',
+    resourceId: 'demo',
+    currentVersion: '1.0.0',
+    targetVersion: '1.0.0',
+    availableVersions: ['1.0.0']
+  }), /NO_CHANGE/);
 });

@@ -19,6 +19,8 @@ function App() {
   const [inventory, setInventory] = useState(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('请选择一个架构工作区开始只读扫描。');
+  const [platformView, setPlatformView] = useState({});
+  const [planPreview, setPlanPreview] = useState(null);
 
   const scan = async (root) => {
     if (!root) return;
@@ -46,6 +48,42 @@ function App() {
     if (!inventory.git.isRepository) return '未绑定 Git';
     return inventory.git.status.length === 0 ? '干净' : `${inventory.git.status.length} 项改动`;
   }, [inventory]);
+
+  const resources = useMemo(() => (inventory?.sharedRepositories || []).flatMap((repo) => (
+    (repo.pointers || []).map((pointer) => ({ ...pointer, repository: repo.repository }))
+  )), [inventory]);
+
+  const previewPlatform = async (platform) => {
+    const currentEnabled = platformView[platform.id] ?? platform.directoryExists;
+    const desiredEnabled = !currentEnabled;
+    try {
+      const plan = await api.previewPlatformPlan({ workspaceRoot: workspace, platformId: platform.id, currentEnabled, desiredEnabled });
+      setPlatformView((state) => ({ ...state, [platform.id]: desiredEnabled }));
+      setPlanPreview(plan);
+      setMessage(`已生成本地视图计划：${platform.id} 将${desiredEnabled ? '显示' : '排除'}。尚未写入。`);
+    } catch (error) {
+      setMessage(`计划生成失败：${error.message}`);
+    }
+  };
+
+  const previewResource = async (resource) => {
+    const target = window.prompt(`输入 ${resource.repository}/${resource.resourceId} 的目标版本`, resource.availableVersions?.find((version) => version !== resource.version) || '');
+    if (!target) return;
+    try {
+      const plan = await api.previewResourcePlan({
+        workspaceRoot: workspace,
+        repository: resource.repository,
+        resourceId: resource.resourceId,
+        currentVersion: resource.version,
+        targetVersion: target,
+        availableVersions: resource.availableVersions
+      });
+      setPlanPreview(plan);
+      setMessage(`已生成资源指针计划：${resource.repository}/${resource.resourceId}。尚未写入。`);
+    } catch (error) {
+      setMessage(`资源计划被拒绝：${error.message}`);
+    }
+  };
 
   return (
     <main className="app-shell">
@@ -84,6 +122,7 @@ function App() {
                 <div className="row" key={platform.id}>
                   <span className="row-name">{platform.id}</span>
                   <span className={platform.bridge ? 'pill good' : 'pill warn'}>{platform.bridge ? '已发现 bridge' : '待核对'}</span>
+                  {inventory && <button className="small-button" onClick={() => previewPlatform(platform)}>{(platformView[platform.id] ?? platform.directoryExists) ? '排除视图' : '恢复视图'}</button>}
                 </div>
               ))}
               {!inventory && <div className="empty">选择工作区后显示平台。</div>}
@@ -98,7 +137,25 @@ function App() {
               <li><span className="check">✓</span>后续写入必须经过计划层</li>
             </ul>
           </section>
+          <section className="panel">
+            <div className="panel-title"><span>三仓资源</span><span className="muted">current 只读</span></div>
+            <div className="rows resource-rows">
+              {resources.slice(0, 12).map((resource) => (
+                <div className="row resource-row" key={`${resource.repository}/${resource.resourceId}`}>
+                  <div><span className="row-name">{resource.resourceId}</span><span className="resource-repo">{resource.repository}</span></div>
+                  <div className="resource-actions"><span className={resource.valid ? 'pill good' : 'pill warn'}>{resource.version || '无版本'}</span><button className="small-button" onClick={() => previewResource(resource)}>生成切换计划</button></div>
+                </div>
+              ))}
+              {!inventory && <div className="empty">选择工作区后显示资源。</div>}
+              {inventory && resources.length > 12 && <div className="muted resource-more">其余 {resources.length - 12} 项将在完整资源页展示。</div>}
+            </div>
+          </section>
         </div>
+        {planPreview && <section className="plan-preview">
+          <div className="panel-title"><span>计划预览</span><button className="small-button" onClick={() => setPlanPreview(null)}>关闭</button></div>
+          <div className="plan-meta"><code>{planPreview.planId}</code><span className="read-only-badge">尚未执行</span></div>
+          <pre>{JSON.stringify(planPreview, null, 2)}</pre>
+        </section>}
       </section>
     </main>
   );

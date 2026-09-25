@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { scanWorkspace } from './inventory.mjs';
+import { buildPlatformViewPlan, buildResourcePointerPlan } from './plans.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const defaultWorkspace = process.env.ARCHITECTURE_MANAGER_WORKSPACE || null;
@@ -17,6 +18,8 @@ function registerReadOnlyIpc() {
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
   ipcMain.handle('workspace:scan', (_event, root) => scanWorkspace(root));
+  ipcMain.handle('plan:platform-view', (_event, input) => buildPlatformViewPlan(input));
+  ipcMain.handle('plan:resource-pointer', (_event, input) => buildResourcePointerPlan(input));
 }
 
 function createWindow() {
@@ -51,4 +54,3 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
-

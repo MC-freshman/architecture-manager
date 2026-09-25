@@ -76,7 +76,15 @@ function listReleasePointers(root, repository) {
     if (!entry.isDirectory()) continue;
     const currentPath = join(repositoryRoot, entry.name, 'current.json');
     if (!existsSync(currentPath)) continue;
-    pointers.push(readCurrentPointer(root, currentPath));
+    const pointer = readCurrentPointer(root, currentPath);
+    const versionsRoot = join(repositoryRoot, entry.name, 'versions');
+    const availableVersions = existsSync(versionsRoot) && statSync(versionsRoot).isDirectory()
+      ? readdirSync(versionsRoot, { withFileTypes: true })
+          .filter((versionEntry) => versionEntry.isDirectory())
+          .map((versionEntry) => versionEntry.name)
+          .sort()
+      : [];
+    pointers.push({ ...pointer, resourceId: entry.name, availableVersions });
   }
   return { repository, exists: true, pointers, errors };
 }
