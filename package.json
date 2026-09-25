@@ -1,0 +1,14 @@
+{
+  "name": "architecture-manager",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone local architecture workspace manager",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "scan": "node src/cli.mjs",
+    "test": "node --test"
+  }
+}

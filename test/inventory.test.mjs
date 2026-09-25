@@ -1,0 +1,58 @@
+import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test from 'node:test';
+import { assertWithinRoot, scanWorkspace } from '../src/inventory.mjs';
+
+function fixture() {
+  const root = mkdtempSync(join(tmpdir(), 'architecture-manager-'));
+  mkdirSync(join(root, 'tool', 'demo'), { recursive: true });
+  mkdirSync(join(root, 'agent', 'demo'), { recursive: true });
+  mkdirSync(join(root, 'software', 'demo'), { recursive: true });
+  mkdirSync(join(root, 'versions'), { recursive: true });
+  mkdirSync(join(root, 'codex', 'bridge'), { recursive: true });
+  writeFileSync(join(root, 'tool', 'demo', 'current.json'), JSON.stringify({ id: 'demo', version: '1.0.0' }));
+  writeFileSync(join(root, 'agent', 'demo', 'current.json'), JSON.stringify({ id: 'demo-agent', version: '1.0.0' }));
+  writeFileSync(join(root, 'software', 'demo', 'current.json'), JSON.stringify({ id: 'demo-software', version: '1.0.0' }));
+  writeFileSync(join(root, 'codex', 'bridge', 'bridge.json'), '{}');
+  writeFileSync(join(root, 'versions', 'architecture.md'), '# test');
+  return root;
+}
+
+test('scans a workspace without writing', () => {
+  const root = fixture();
+  try {
+    const result = scanWorkspace(root);
+    assert.equal(result.schema, 'architecture-manager-inventory/v1');
+    assert.equal(result.writePerformed, false);
+    assert.equal(result.sharedRepositories[0].pointers[0].version, '1.0.0');
+    assert.equal(result.platforms.find((item) => item.id === 'codex').bridge, 'codex/bridge/bridge.json');
+    assert.deepEqual(result.architectureDocuments, ['versions/architecture.md']);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('classifies corrupt current.json instead of treating it as green', () => {
+  const root = fixture();
+  try {
+    writeFileSync(join(root, 'tool', 'demo', 'current.json'), '{broken');
+    const result = scanWorkspace(root);
+    assert.equal(result.sharedRepositories[0].pointers[0].valid, false);
+    assert.match(result.sharedRepositories[0].pointers[0].error, /Unexpected|JSON/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('rejects a missing root and paths outside the selected root', () => {
+  assert.throws(() => scanWorkspace(join(tmpdir(), 'does-not-exist')), /not an existing directory/);
+  const root = fixture();
+  try {
+    assert.throws(() => assertWithinRoot(root, tmpdir()), /outside workspace root/);
+    assert.equal(assertWithinRoot(root, join(root, 'tool')), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
