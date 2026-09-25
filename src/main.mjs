@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { scanWorkspace } from './inventory.mjs';
 import { buildPlatformViewPlan, buildResourcePointerPlan } from './plans.mjs';
 import { buildDocumentPlan, readDocument } from './documents.mjs';
+import { buildSoftwareLaunchPlan, healthSoftware } from './software.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const defaultWorkspace = process.env.ARCHITECTURE_MANAGER_WORKSPACE || null;
@@ -23,6 +24,8 @@ function registerReadOnlyIpc() {
   ipcMain.handle('plan:resource-pointer', (_event, input) => buildResourcePointerPlan(input));
   ipcMain.handle('document:read', (_event, input) => readDocument(input.workspaceRoot, input.relativePath));
   ipcMain.handle('plan:document', (_event, input) => buildDocumentPlan(input));
+  ipcMain.handle('software:health', (_event, input) => healthSoftware(input.workspaceRoot, input.softwareId));
+  ipcMain.handle('plan:software', (_event, input) => buildSoftwareLaunchPlan(input));
 }
 
 function createWindow() {

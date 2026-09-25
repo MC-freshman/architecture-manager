@@ -7,5 +7,7 @@ contextBridge.exposeInMainWorld('architectureManager', Object.freeze({
   previewPlatformPlan: (input) => ipcRenderer.invoke('plan:platform-view', input),
   previewResourcePlan: (input) => ipcRenderer.invoke('plan:resource-pointer', input),
   readDocument: (input) => ipcRenderer.invoke('document:read', input),
-  previewDocumentPlan: (input) => ipcRenderer.invoke('plan:document', input)
+  previewDocumentPlan: (input) => ipcRenderer.invoke('plan:document', input),
+  softwareHealth: (input) => ipcRenderer.invoke('software:health', input),
+  previewSoftwarePlan: (input) => ipcRenderer.invoke('plan:software', input)
 }));

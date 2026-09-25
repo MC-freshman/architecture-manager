@@ -58,3 +58,8 @@ code { color: #24495b; overflow: hidden; text-overflow: ellipsis; white-space: n
 .editor-heading { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 8px; font-size: 12px; }
 .editor-box textarea { width: 100%; min-height: 180px; resize: vertical; border: 1px solid #bfd5dd; border-radius: 7px; padding: 10px; color: #263e4a; background: #fcffff; font: 12px/1.5 Consolas, monospace; }
 .sensitive-confirm { display: block; margin: 9px 0; color: #76551a; font-size: 12px; }
+.software-row { display: flex; justify-content: space-between; gap: 18px; padding: 13px 2px; border-bottom: 1px solid #eef2f4; }
+.software-row:last-child { border-bottom: 0; }
+.software-main { min-width: 0; }
+.software-meta { margin-top: 6px; color: #6b7d88; font-size: 12px; }
+.software-panel { grid-column: 1 / -1; }

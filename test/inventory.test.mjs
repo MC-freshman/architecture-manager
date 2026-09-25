@@ -7,6 +7,7 @@ import test from 'node:test';
 import { assertWithinRoot, scanWorkspace } from '../src/inventory.mjs';
 import { buildPlatformViewPlan, buildResourcePointerPlan } from '../src/plans.mjs';
 import { buildDocumentPlan } from '../src/documents.mjs';
+import { buildSoftwareLaunchPlan, listSoftware } from '../src/software.mjs';
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'architecture-manager-'));
@@ -120,4 +121,19 @@ test('protects top-level requirements and creates a hashed document plan', () =>
   });
   assert.equal(plan.writePerformed, false);
   assert.equal(plan.steps[0].oldSha256, baselineSha256);
+});
+
+test('lists registered software and creates a provider-only launch plan', () => {
+  const root = fixture();
+  try {
+    const software = listSoftware(root);
+    assert.equal(software.length, 1);
+    assert.equal(software[0].id, 'demo');
+    const plan = buildSoftwareLaunchPlan({ workspaceRoot: root, softwareId: 'demo', mode: 'launch', now: '2026-09-25T00:00:00.000Z' });
+    assert.equal(plan.kind, 'software-action');
+    assert.equal(plan.writePerformed, false);
+    assert.equal(plan.steps[0].dispatch, 'registered-provider-only');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

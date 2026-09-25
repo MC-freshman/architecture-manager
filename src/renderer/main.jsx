@@ -24,6 +24,7 @@ function App() {
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [documentDraft, setDocumentDraft] = useState('');
   const [sensitiveConfirmed, setSensitiveConfirmed] = useState(false);
+  const [softwareResults, setSoftwareResults] = useState({});
 
   const scan = async (root) => {
     if (!root) return;
@@ -57,6 +58,7 @@ function App() {
   )), [inventory]);
 
   const planDocuments = useMemo(() => (inventory?.architectureDocuments || []).filter((path) => /实施表|方案|台账|基本原则/.test(path)), [inventory]);
+  const software = inventory?.software || [];
 
   const previewPlatform = async (platform) => {
     const currentEnabled = platformView[platform.id] ?? platform.directoryExists;
@@ -117,6 +119,26 @@ function App() {
       setMessage(`已生成文档变更计划：${selectedDocument.path}。尚未写入。`);
     } catch (error) {
       setMessage(`文档计划被拒绝：${error.message}`);
+    }
+  };
+
+  const checkSoftware = async (item) => {
+    try {
+      const result = await api.softwareHealth({ workspaceRoot: workspace, softwareId: item.id });
+      setSoftwareResults((state) => ({ ...state, [item.id]: result }));
+      setMessage(`${item.id} 健康检查：${result.status}`);
+    } catch (error) {
+      setMessage(`软件健康检查失败：${error.message}`);
+    }
+  };
+
+  const previewSoftware = async (item) => {
+    try {
+      const plan = await api.previewSoftwarePlan({ workspaceRoot: workspace, softwareId: item.id, mode: 'launch' });
+      setPlanPreview(plan);
+      setMessage(`已生成 ${item.id} 启动计划。尚未启动软件。`);
+    } catch (error) {
+      setMessage(`软件启动计划被拒绝：${error.message}`);
     }
   };
 
@@ -202,6 +224,19 @@ function App() {
               {selectedDocument.sensitive && <label className="sensitive-confirm"><input type="checkbox" checked={sensitiveConfirmed} onChange={(event) => setSensitiveConfirmed(event.target.checked)} /> 我确认这是顶层治理要求的变更预览</label>}
               <button className="small-button" onClick={previewDocument}>生成文档变更计划</button>
             </div>}
+          </section>
+          <section className="panel software-panel">
+            <div className="panel-title"><span>软件中心</span><span className="muted">recipe / connector</span></div>
+            <div className="rows">
+              {software.map((item) => {
+                const result = softwareResults[item.id];
+                return <div className="software-row" key={item.id}>
+                  <div className="software-main"><span className="row-name">{item.displayName}</span><span className="resource-repo">{item.id} · {item.version}</span><div className="software-meta">{item.transport || '未声明'} · {item.bodyExists === true ? '本体已发现' : item.bodyExists === false ? '本体未发现' : '路径待核对'} · {item.snapshotFrozen ? '快照已冻结' : '快照待核验'}</div></div>
+                  <div className="resource-actions"><span className={result?.status === 'PASS' ? 'pill good' : result ? 'pill warn' : 'pill'}>{result?.status || '未检查'}</span><button className="small-button" onClick={() => checkSoftware(item)}>健康检查</button><button className="small-button" onClick={() => previewSoftware(item)}>启动计划</button></div>
+                </div>;
+              })}
+              {!inventory && <div className="empty">选择工作区后显示软件。</div>}
+            </div>
           </section>
         </div>
         {planPreview && <section className="plan-preview">

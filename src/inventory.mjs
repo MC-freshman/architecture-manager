@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { listSoftware } from './software.mjs';
 
 export const FORMAL_TOP_LEVEL_DIRECTORIES = [
   '.workbuddy',
@@ -143,6 +144,7 @@ export function scanWorkspace(workspaceRoot) {
     formalTopLevelDirectories: FORMAL_TOP_LEVEL_DIRECTORIES,
     observedTopLevelDirectories: topLevel,
     sharedRepositories: shared,
+    software: listSoftware(root),
     platforms,
     architectureDocuments,
     git: inspectGit(root),
