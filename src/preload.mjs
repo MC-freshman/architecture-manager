@@ -12,5 +12,7 @@ contextBridge.exposeInMainWorld('architectureManager', Object.freeze({
   previewSoftwarePlan: (input) => ipcRenderer.invoke('plan:software', input),
   inspectGit: (root) => ipcRenderer.invoke('git:inspect', root),
   scanSensitiveFiles: (root) => ipcRenderer.invoke('git:sensitive-scan', root),
-  previewGitPlan: (input) => ipcRenderer.invoke('plan:git', input)
+  previewGitPlan: (input) => ipcRenderer.invoke('plan:git', input),
+  applyPlan: (input) => ipcRenderer.invoke('transaction:apply', input),
+  verifyPlan: (input) => ipcRenderer.invoke('transaction:verify', input)
 }));

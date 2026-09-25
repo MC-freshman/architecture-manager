@@ -7,6 +7,7 @@ import { buildPlatformViewPlan, buildResourcePointerPlan } from './plans.mjs';
 import { buildDocumentPlan, readDocument } from './documents.mjs';
 import { buildSoftwareLaunchPlan, healthSoftware } from './software.mjs';
 import { buildGitPlan, inspectGit, scanSensitiveFiles } from './git.mjs';
+import { applyPlan, verifyPlanTarget } from './transactions.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const defaultWorkspace = process.env.ARCHITECTURE_MANAGER_WORKSPACE || null;
@@ -30,6 +31,8 @@ function registerReadOnlyIpc() {
   ipcMain.handle('git:inspect', (_event, root) => inspectGit(root));
   ipcMain.handle('git:sensitive-scan', (_event, root) => scanSensitiveFiles(root));
   ipcMain.handle('plan:git', (_event, input) => buildGitPlan(input));
+  ipcMain.handle('transaction:apply', (_event, input) => applyPlan(input));
+  ipcMain.handle('transaction:verify', (_event, input) => verifyPlanTarget(input));
 }
 
 function createWindow() {

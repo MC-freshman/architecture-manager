@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -9,6 +9,7 @@ import { buildPlatformViewPlan, buildResourcePointerPlan } from '../src/plans.mj
 import { buildDocumentPlan } from '../src/documents.mjs';
 import { buildSoftwareLaunchPlan, listSoftware } from '../src/software.mjs';
 import { backupAndRestoreFixture, buildGitPlan, scanSensitiveFiles } from '../src/git.mjs';
+import { applyPlan, verifyPlanTarget } from '../src/transactions.mjs';
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'architecture-manager-'));
@@ -163,4 +164,84 @@ test('rehearses backup and restore on a temporary fixture', () => {
   assert.equal(result.restored, 'restore-me');
   assert.equal(result.writePerformed, true);
   rmSync(root, { recursive: true, force: true });
+});
+
+test('applies and verifies a document plan with checkpoint and idempotency', () => {
+  const root = fixture();
+  const auditRoot = join(root, 'audit');
+  const target = join(root, 'versions', 'architecture.md');
+  const beforeText = readFileSync(target, 'utf8');
+  const afterText = '# changed safely\n';
+  const plan = buildDocumentPlan({
+    workspaceRoot: root,
+    relativePath: 'versions/architecture.md',
+    beforeText,
+    afterText,
+    baselineSha256: createHash('sha256').update(beforeText, 'utf8').digest('hex'),
+    now: '2026-09-25T00:00:00.000Z'
+  });
+  try {
+    const applied = applyPlan({ plan, afterText, auditRoot, actor: 'test-user', now: '2026-09-25T00:00:01.000Z' });
+    assert.equal(applied.status, 'applied');
+    assert.equal(applied.writePerformed, true);
+    assert.equal(verifyPlanTarget({ plan }).ok, true);
+    const repeated = applyPlan({ plan, afterText, auditRoot, actor: 'test-user', now: '2026-09-25T00:00:02.000Z' });
+    assert.equal(repeated.status, 'already-applied');
+    const audit = readFileSync(join(auditRoot, 'events.jsonl'), 'utf8');
+    assert.doesNotMatch(audit, /changed safely/);
+    assert.ok(existsSync(applied.checkpointPath));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('blocks external document changes and preserves the original on interruption', () => {
+  const root = fixture();
+  const auditRoot = join(root, 'audit');
+  const target = join(root, 'versions', 'architecture.md');
+  const beforeText = readFileSync(target, 'utf8');
+  const afterText = '# planned change\n';
+  const plan = buildDocumentPlan({
+    workspaceRoot: root,
+    relativePath: 'versions/architecture.md',
+    beforeText,
+    afterText,
+    baselineSha256: createHash('sha256').update(beforeText, 'utf8').digest('hex')
+  });
+  try {
+    writeFileSync(target, '# changed outside manager\n');
+    assert.throws(() => applyPlan({ plan, afterText, auditRoot }), /EXTERNAL_CHANGE_DETECTED/);
+    writeFileSync(target, beforeText);
+    assert.throws(() => applyPlan({ plan, afterText, auditRoot, failAfterCheckpoint: true }), /SIMULATED_INTERRUPT/);
+    assert.equal(readFileSync(target, 'utf8'), beforeText);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('applies and verifies a hashed shared current pointer plan', () => {
+  const root = fixture();
+  const auditRoot = join(root, 'audit');
+  const target = join(root, 'tool', 'demo', 'current.json');
+  const beforeText = readFileSync(target, 'utf8');
+  const baselineSha256 = createHash('sha256').update(beforeText, 'utf8').digest('hex');
+  const plan = buildResourcePointerPlan({
+    workspaceRoot: root,
+    repository: 'tool',
+    resourceId: 'demo',
+    currentVersion: '1.0.0',
+    targetVersion: '1.1.0',
+    availableVersions: ['1.0.0', '1.1.0'],
+    baselineSha256
+  });
+  try {
+    const applied = applyPlan({ plan, auditRoot, actor: 'test-user' });
+    assert.equal(applied.status, 'applied');
+    assert.equal(JSON.parse(readFileSync(target, 'utf8')).version, '1.1.0');
+    assert.equal(verifyPlanTarget({ plan }).ok, true);
+    const repeated = applyPlan({ plan, auditRoot });
+    assert.equal(repeated.status, 'already-applied');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

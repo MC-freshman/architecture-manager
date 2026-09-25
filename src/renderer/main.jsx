@@ -101,7 +101,8 @@ function App() {
         resourceId: resource.resourceId,
         currentVersion: resource.version,
         targetVersion: target,
-        availableVersions: resource.availableVersions
+        availableVersions: resource.availableVersions,
+        baselineSha256: resource.sha256
       });
       setPlanPreview(plan);
       setMessage(`已生成资源指针计划：${resource.repository}/${resource.resourceId}。尚未写入。`);

@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { listSoftware } from './software.mjs';
@@ -52,12 +53,14 @@ function safeReadJson(filePath) {
 }
 
 function readCurrentPointer(root, filePath) {
+  const raw = readFileSync(filePath, 'utf8');
   const parsed = safeReadJson(filePath);
   const result = {
     path: relativePath(root, filePath),
     valid: parsed.ok,
     id: parsed.ok && typeof parsed.value?.id === 'string' ? parsed.value.id : null,
     version: parsed.ok && typeof parsed.value?.version === 'string' ? parsed.value.version : null,
+    sha256: createHash('sha256').update(raw, 'utf8').digest('hex'),
     error: parsed.ok ? null : parsed.error
   };
   if (parsed.ok && typeof parsed.value?.version !== 'string') {

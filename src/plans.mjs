@@ -32,7 +32,7 @@ export function buildPlatformViewPlan({ workspaceRoot, platformId, currentEnable
   return plan;
 }
 
-export function buildResourcePointerPlan({ workspaceRoot, repository, resourceId, currentVersion, targetVersion, availableVersions = [], now = new Date().toISOString() }) {
+export function buildResourcePointerPlan({ workspaceRoot, repository, resourceId, currentVersion, targetVersion, availableVersions = [], baselineSha256 = null, now = new Date().toISOString() }) {
   if (!REPOSITORIES.has(repository)) throw new Error('INVALID_SHARED_REPOSITORY');
   if (typeof resourceId !== 'string' || !RESOURCE_ID.test(resourceId)) throw new Error('INVALID_RESOURCE_ID');
   if (typeof currentVersion !== 'string' || !SEMVER.test(currentVersion)) throw new Error('INVALID_CURRENT_VERSION');
@@ -40,12 +40,13 @@ export function buildResourcePointerPlan({ workspaceRoot, repository, resourceId
   if (currentVersion === targetVersion) throw new Error('NO_CHANGE');
   if (!Array.isArray(availableVersions) || !availableVersions.includes(targetVersion)) throw new Error('TARGET_VERSION_UNAVAILABLE');
   const plan = basePlan('resource-pointer', workspaceRoot, now);
-  plan.target = { repository, resourceId, currentVersion, targetVersion };
+  plan.target = { repository, resourceId, currentVersion, targetVersion, baselineSha256 };
   plan.steps.push({
     operation: 'replace-current-pointer',
     target: `${repository}/${resourceId}/current.json`,
     oldValue: { version: currentVersion },
     newValue: { version: targetVersion },
+    ...(baselineSha256 ? { oldSha256: baselineSha256 } : {}),
     checkpoint: true
   });
   plan.verification.push('current pointer still contains the expected old version before apply');
