@@ -50,6 +50,10 @@ code { color: #24495b; overflow: hidden; text-overflow: ellipsis; white-space: n
 .resource-more { padding-top: 12px; }
 .plan-preview { margin-top: 18px; padding: 20px; border: 1px solid #bedde2; border-radius: 12px; background: #fbffff; }
 .plan-meta { display: flex; align-items: center; gap: 10px; margin: 14px 0; }
+.plan-buttons { display: flex; gap: 8px; }
+.primary-small { color: #fff; border-color: #1e6972; background: #1e6972; }
+.primary-small:hover { color: #fff; background: #15545c; }
+.plan-explain { margin: 10px 0; padding: 10px 12px; border-radius: 8px; color: #365665; background: #eff8fa; font-size: 13px; }
 .plan-preview pre { max-height: 330px; overflow: auto; padding: 16px; border-radius: 8px; color: #d8f3f1; background: #142b38; font: 12px/1.55 Consolas, monospace; }
 .document-list { display: grid; gap: 6px; margin-top: 10px; }
 .document-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; border: 0; border-radius: 7px; padding: 9px 10px; color: #274b5b; background: #f5fafb; text-align: left; cursor: pointer; }
@@ -63,6 +67,8 @@ code { color: #24495b; overflow: hidden; text-overflow: ellipsis; white-space: n
 .software-main { min-width: 0; }
 .software-meta { margin-top: 6px; color: #6b7d88; font-size: 12px; }
 .software-panel { grid-column: 1 / -1; }
+.help-panel { grid-column: 1 / -1; }
+.help-list { margin: 12px 0 0; padding-left: 24px; color: #3a525e; line-height: 1.8; }
 .git-panel { grid-column: 1 / -1; }
 .git-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
 .git-summary > div { display: flex; flex-direction: column; gap: 5px; min-width: 0; }

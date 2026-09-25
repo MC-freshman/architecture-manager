@@ -4,6 +4,20 @@ import './styles.css';
 
 const api = window.architectureManager;
 
+const friendlyError = (error) => {
+  const code = String(error?.message ?? error);
+  const hints = {
+    DOCUMENT_BASELINE_MISMATCH: '文档在读取后发生了变化，请重新打开文档再编辑。',
+    EXTERNAL_CHANGE_DETECTED: '目标文件已被其他程序修改，管理台已阻止覆盖，请重新扫描。',
+    TOP_LEVEL_CONFIRMATION_REQUIRED: '顶层治理文件需要勾选确认后才能生成计划。',
+    TARGET_VERSION_UNAVAILABLE: '目标版本不在当前共享仓目录中，请先确认版本已发布。',
+    POINTER_BASELINE_REQUIRED: '这个指针缺少基线哈希，请重新扫描工作区。',
+    TRANSACTION_TARGET_OUTSIDE_WORKSPACE: '目标路径不在当前工作区内，操作已阻止。',
+    TRANSACTION_KIND_UNSUPPORTED: '此类计划暂时只能查看，尚未提供安全执行器。'
+  };
+  return hints[code] ? `${hints[code]}（${code}）` : code;
+};
+
 function Stat({ label, value, hint }) {
   return (
     <div className="stat-card">
@@ -27,6 +41,7 @@ function App() {
   const [softwareResults, setSoftwareResults] = useState({});
   const [gitDetails, setGitDetails] = useState(null);
   const [sensitiveScan, setSensitiveScan] = useState(null);
+  const [planPayload, setPlanPayload] = useState(null);
 
   const scan = async (root) => {
     if (!root) return;
@@ -39,7 +54,7 @@ function App() {
       setGitDetails(result.git);
       setMessage(result.errors.length === 0 ? '扫描完成，当前页面没有执行写入。' : `扫描完成，发现 ${result.errors.length} 个待处理问题。`);
     } catch (error) {
-      setMessage(`扫描失败：${error.message}`);
+      setMessage(`扫描失败：${friendlyError(error)}`);
     } finally {
       setBusy(false);
     }
@@ -56,7 +71,7 @@ function App() {
       setSensitiveScan(scanResult);
       setMessage(`Git 状态已刷新：${details.status?.length || 0} 项改动，敏感文件扫描 ${scanResult.clean ? '通过' : `发现 ${scanResult.findings.length} 项待核对`}。`);
     } catch (error) {
-      setMessage(`Git 状态读取失败：${error.message}`);
+      setMessage(`Git 状态读取失败：${friendlyError(error)}`);
     }
   };
 
@@ -85,9 +100,10 @@ function App() {
       const plan = await api.previewPlatformPlan({ workspaceRoot: workspace, platformId: platform.id, currentEnabled, desiredEnabled });
       setPlatformView((state) => ({ ...state, [platform.id]: desiredEnabled }));
       setPlanPreview(plan);
+      setPlanPayload(null);
       setMessage(`已生成本地视图计划：${platform.id} 将${desiredEnabled ? '显示' : '排除'}。尚未写入。`);
     } catch (error) {
-      setMessage(`计划生成失败：${error.message}`);
+      setMessage(`计划生成失败：${friendlyError(error)}`);
     }
   };
 
@@ -105,9 +121,10 @@ function App() {
         baselineSha256: resource.sha256
       });
       setPlanPreview(plan);
+      setPlanPayload(null);
       setMessage(`已生成资源指针计划：${resource.repository}/${resource.resourceId}。尚未写入。`);
     } catch (error) {
-      setMessage(`资源计划被拒绝：${error.message}`);
+      setMessage(`资源计划被拒绝：${friendlyError(error)}`);
     }
   };
 
@@ -119,7 +136,7 @@ function App() {
       setSensitiveConfirmed(false);
       setMessage(`已读取 ${path}，编辑仍只在本地内存中。`);
     } catch (error) {
-      setMessage(`文档读取失败：${error.message}`);
+      setMessage(`文档读取失败：${friendlyError(error)}`);
     }
   };
 
@@ -135,9 +152,10 @@ function App() {
         highSensitivityConfirmed: sensitiveConfirmed
       });
       setPlanPreview(plan);
+      setPlanPayload({ afterText: documentDraft });
       setMessage(`已生成文档变更计划：${selectedDocument.path}。尚未写入。`);
     } catch (error) {
-      setMessage(`文档计划被拒绝：${error.message}`);
+      setMessage(`文档计划被拒绝：${friendlyError(error)}`);
     }
   };
 
@@ -147,7 +165,7 @@ function App() {
       setSoftwareResults((state) => ({ ...state, [item.id]: result }));
       setMessage(`${item.id} 健康检查：${result.status}`);
     } catch (error) {
-      setMessage(`软件健康检查失败：${error.message}`);
+      setMessage(`软件健康检查失败：${friendlyError(error)}`);
     }
   };
 
@@ -155,9 +173,10 @@ function App() {
     try {
       const plan = await api.previewSoftwarePlan({ workspaceRoot: workspace, softwareId: item.id, mode: 'launch' });
       setPlanPreview(plan);
+      setPlanPayload(null);
       setMessage(`已生成 ${item.id} 启动计划。尚未启动软件。`);
     } catch (error) {
-      setMessage(`软件启动计划被拒绝：${error.message}`);
+      setMessage(`软件启动计划被拒绝：${friendlyError(error)}`);
     }
   };
 
@@ -171,9 +190,31 @@ function App() {
     try {
       const plan = await api.previewGitPlan(input);
       setPlanPreview(plan);
+      setPlanPayload(null);
       setMessage(`已生成 Git ${action} 计划。尚未执行任何 Git 或文件写入。`);
     } catch (error) {
-      setMessage(`Git 计划被拒绝：${error.message}`);
+      setMessage(`Git 计划被拒绝：${friendlyError(error)}`);
+    }
+  };
+
+  const executePlan = async () => {
+    if (!planPreview || !['document-edit', 'resource-pointer'].includes(planPreview.kind)) return;
+    const target = planPreview.target?.path || `${planPreview.target?.repository}/${planPreview.target?.resourceId}/current.json`;
+    if (!window.confirm(`确认执行此计划？\n\n目标：${target}\n\n执行前会再次核对文件哈希，失败会阻止覆盖。`)) return;
+    setBusy(true);
+    try {
+      const applied = await api.applyPlan({ plan: planPreview, afterText: planPayload?.afterText, actor: 'local-user' });
+      const verification = await api.verifyPlan({ plan: planPreview });
+      const refreshed = await api.scanWorkspace(workspace);
+      setInventory(refreshed);
+      setGitDetails(refreshed.git);
+      setPlanPreview(null);
+      setPlanPayload(null);
+      setMessage(`计划已${applied.status === 'already-applied' ? '确认已执行' : '执行'}，验证${verification.ok ? '通过' : '未通过'}。`);
+    } catch (error) {
+      setMessage(`计划执行失败：${friendlyError(error)}`);
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -198,7 +239,7 @@ function App() {
       </section>
 
       <section className="content">
-        <div className="notice"><strong>当前状态：</strong>{message}</div>
+        <div className="notice" role="status" aria-live="polite"><strong>当前状态：</strong>{message}</div>
         <div className="stats-grid">
           <Stat label="平台" value={inventory?.platforms?.length ?? '—'} hint="独立配置入口" />
           <Stat label="共享仓" value={inventory?.sharedRepositories?.length ?? '—'} hint="tool · agent · software" />
@@ -228,6 +269,15 @@ function App() {
               <li><span className="check">✓</span>路径越界在 API 层拒绝</li>
               <li><span className="check">✓</span>后续写入必须经过计划层</li>
             </ul>
+          </section>
+          <section className="panel help-panel">
+            <div className="panel-title"><span>新手操作</span><span className="muted">不需要控制台</span></div>
+            <ol className="help-list">
+              <li>点击“选择工作区”，选中自己的 `E:\ai` 架构目录。</li>
+              <li>先查看平台、资源、文档和软件状态；所有按钮先生成计划。</li>
+              <li>编辑文档后查看哈希变化，再点击“执行计划”确认写入。</li>
+              <li>执行后管理台会重新扫描并验证；遇到外部修改会自动拒绝。</li>
+            </ol>
           </section>
           <section className="panel">
             <div className="panel-title"><span>三仓资源</span><span className="muted">current 只读</span></div>
@@ -294,8 +344,9 @@ function App() {
           </section>
         </div>
         {planPreview && <section className="plan-preview">
-          <div className="panel-title"><span>计划预览</span><button className="small-button" onClick={() => setPlanPreview(null)}>关闭</button></div>
+          <div className="panel-title"><span>计划预览</span><div className="plan-buttons">{['document-edit', 'resource-pointer'].includes(planPreview.kind) && <button className="small-button primary-small" onClick={executePlan}>确认并执行</button>}<button className="small-button" onClick={() => { setPlanPreview(null); setPlanPayload(null); }}>关闭</button></div></div>
           <div className="plan-meta"><code>{planPreview.planId}</code><span className="read-only-badge">尚未执行</span></div>
+          {['document-edit', 'resource-pointer'].includes(planPreview.kind) && <div className="plan-explain">执行前会重新检查基线哈希；确认后才会写入，执行结果会立即回读验证。</div>}
           <pre>{JSON.stringify(planPreview, null, 2)}</pre>
         </section>}
       </section>

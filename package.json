@@ -12,7 +12,8 @@
     "scan": "node src/cli.mjs",
     "test": "node --test",
     "build:ui": "vite build",
-    "start": "npm run build:ui && electron ."
+    "start": "npm run build:ui && electron .",
+    "package:win": "npm run build:ui && electron-builder --win nsis portable --publish never"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -21,6 +22,34 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
     "electron": "^30.5.1",
+    "electron-builder": "^26.15.3",
     "vite": "^5.4.8"
+  },
+  "build": {
+    "appId": "local.codex.architecturemanager",
+    "productName": "Architecture Manager",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "artifactName": "Architecture-Manager-${version}-setup-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Architecture-Manager-${version}-portable-${arch}.${ext}"
+    }
   }
 }
