@@ -1,7 +1,9 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { buildRegistryPlan } from './catalog.mjs';
+import { inspectPlatformDirectory } from './inventory.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { join, normalize, relative, resolve, sep } from 'node:path';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 
 function sha256(value) {
   return createHash('sha256').update(value, 'utf8').digest('hex');
@@ -15,8 +17,9 @@ function safeRelative(value) {
 }
 
 function targetPath(workspaceRoot, relativePath) {
-  const root = resolve(workspaceRoot);
-  const target = resolve(root, safeRelative(relativePath));
+  const root = realpathSync(workspaceRoot);
+  const lexical = resolve(root, safeRelative(relativePath));
+  const target = existsSync(lexical) ? realpathSync(lexical) : lexical;
   const rel = relative(root, target);
   if (rel.startsWith(`..${sep}`) || rel === '..' || /^[A-Za-z]:/i.test(rel)) throw new Error('TRANSACTION_TARGET_OUTSIDE_WORKSPACE');
   return target;
@@ -24,6 +27,12 @@ function targetPath(workspaceRoot, relativePath) {
 
 function defaultAuditRoot() {
   return join(process.env.LOCALAPPDATA || tmpdir(), 'ArchitectureManager', 'audit');
+}
+
+function localViewPath(workspaceRoot) {
+  const key = sha256(realpathSync(workspaceRoot)).slice(0, 24);
+  const base = process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local');
+  return join(base, 'ArchitectureManager', 'views', `${key}.json`);
 }
 
 function auditPath(auditRoot) {
@@ -88,7 +97,68 @@ export function applyPlan({ plan, afterText = null, actor = 'local-user', auditR
   requirePlan(plan);
   if (plan.kind === 'document-edit') return applyDocument(plan, afterText, { actor, auditRoot, now, failAfterCheckpoint });
   if (plan.kind === 'resource-pointer') return applyPointer(plan, { actor, auditRoot, now, failAfterCheckpoint });
+  if (plan.kind === 'platform-view') return applyPlatformView(plan, { actor, auditRoot, now, failAfterCheckpoint });
+  if (plan.kind === 'registry-edit') return applyRegistry(plan, afterText || plan.payload?.afterText, { actor, auditRoot, now, failAfterCheckpoint });
   throw new Error('TRANSACTION_KIND_UNSUPPORTED');
+}
+
+function applyPlatformView(plan, context) {
+  const platformId = plan.target?.platformId;
+  const desired = plan.target?.desiredEnabled;
+  if (typeof platformId !== 'string' || typeof desired !== 'boolean') throw new Error('INVALID_PLATFORM_STATE');
+  const inspected = inspectPlatformDirectory(plan.workspaceRoot, platformId, plan.target.directoryRelative || platformId);
+  if (desired && !inspected.validForView) throw new Error('PLATFORM_MARKERS_MISSING');
+  const target = localViewPath(plan.workspaceRoot);
+  const before = existsSync(target) ? readFileSync(target, 'utf8') : JSON.stringify({ schema: 'architecture-manager-view/v1', workspaceRoot: resolve(plan.workspaceRoot), enabled: {} }, null, 2);
+  let state;
+  try { state = JSON.parse(before); } catch { throw new Error('LOCAL_VIEW_CORRUPT'); }
+  state.enabled = state.enabled && typeof state.enabled === 'object' ? state.enabled : {};
+  const current = state.enabled[platformId] !== false;
+  const id = makeId(plan, context.now);
+  if (current === desired) return output(writeAudit({ ...context, transactionId: id, plan, action: 'platform-view', status: 'already-applied', target: `platform:${platformId}` }));
+  if (current !== plan.target.currentEnabled) throw new Error('EXTERNAL_CHANGE_DETECTED');
+  state.enabled[platformId] = desired;
+  const after = `${JSON.stringify(state, null, 2)}\n`;
+  const saved = saveCheckpoint(context.auditRoot, id, before);
+  if (context.failAfterCheckpoint) throw Object.assign(new Error('SIMULATED_INTERRUPT'), { checkpointPath: saved.path });
+  try {
+    mkdirSync(resolve(target, '..'), { recursive: true });
+    atomicWrite(target, after, id);
+    const event = writeAudit({ ...context, transactionId: id, plan, action: 'platform-view', status: 'applied', target: `platform:${platformId}`, oldSha256: sha256(before), newSha256: sha256(after), checkpointSha256: saved.sha256, checkpointPath: saved.path, writePerformed: true });
+    return output(event, saved.path);
+  } catch (error) {
+    if (existsSync(saved.path)) atomicWrite(target, before, `${id}-restore`);
+    throw Object.assign(new Error(String(error?.message ?? error)), { checkpointPath: saved.path });
+  }
+}
+
+function applyRegistry(plan, afterText, context) {
+  if (typeof afterText !== 'string') throw new Error('REGISTRY_PAYLOAD_REQUIRED');
+  const relativeTarget = safeRelative(plan.target?.path);
+  if (!(relativeTarget === 'agent/registry.json' || relativeTarget === 'tool/registry.json')) throw new Error('TRANSACTION_TARGET_NOT_ALLOWED');
+  const target = targetPath(plan.workspaceRoot, relativeTarget);
+  if (!existsSync(target) || !statSync(target).isFile()) throw new Error('TRANSACTION_TARGET_NOT_FOUND');
+  const before = readFileSync(target, 'utf8');
+  const expectedOld = plan.steps?.[0]?.oldSha256;
+  const expectedNew = plan.steps?.[0]?.newSha256;
+  const id = makeId(plan, context.now);
+  if (sha256(before) === expectedNew) return output(writeAudit({ ...context, transactionId: id, plan, action: 'registry-edit', status: 'already-applied', target: relativeTarget, oldSha256: expectedOld, newSha256: expectedNew }));
+  if (sha256(before) !== expectedOld) throw Object.assign(new Error('EXTERNAL_CHANGE_DETECTED'), { audit: writeAudit({ ...context, transactionId: id, plan, action: 'registry-edit', status: 'blocked-external-change', target: relativeTarget, oldSha256: expectedOld, newSha256: expectedNew, error: 'EXTERNAL_CHANGE_DETECTED' }) });
+  if (sha256(afterText) !== expectedNew) throw new Error('PLAN_PAYLOAD_MISMATCH');
+  const validated = buildRegistryPlan({ workspaceRoot: plan.workspaceRoot, kind: plan.target.catalogKind, action: plan.target.action, id: plan.target.id, entry: plan.target.entry, baselineSha256: expectedOld });
+  if (validated.steps[0].newSha256 !== expectedNew) throw new Error('PLAN_PAYLOAD_MISMATCH');
+  JSON.parse(afterText);
+  const saved = saveCheckpoint(context.auditRoot, id, before);
+  if (context.failAfterCheckpoint) throw Object.assign(new Error('SIMULATED_INTERRUPT'), { checkpointPath: saved.path });
+  try {
+    atomicWrite(target, afterText, id);
+    const actual = sha256(readFileSync(target, 'utf8'));
+    if (actual !== expectedNew) throw new Error('VERIFY_FAILED');
+    return output(writeAudit({ ...context, transactionId: id, plan, action: 'registry-edit', status: 'applied', target: relativeTarget, oldSha256: expectedOld, newSha256: expectedNew, checkpointSha256: saved.sha256, checkpointPath: saved.path, writePerformed: true }), saved.path);
+  } catch (error) {
+    if (existsSync(saved.path)) atomicWrite(target, before, `${id}-restore`);
+    throw Object.assign(new Error(String(error?.message ?? error)), { checkpointPath: saved.path });
+  }
 }
 
 function applyDocument(plan, afterText, context) {
@@ -182,6 +252,17 @@ export function verifyPlanTarget({ plan }) {
     const target = targetPath(plan.workspaceRoot, targetRelative);
     const current = JSON.parse(readFileSync(target, 'utf8'));
     return { schema: 'architecture-manager-verification/v1', ok: current.version === plan.target.targetVersion, target: targetRelative, actualVersion: current.version, expectedVersion: plan.target.targetVersion, writePerformed: false };
+  }
+  if (plan.kind === 'platform-view') {
+    const path = localViewPath(plan.workspaceRoot);
+    const state = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : { enabled: {} };
+    const actual = state.enabled?.[plan.target.platformId] !== false;
+    return { schema: 'architecture-manager-verification/v1', ok: actual === plan.target.desiredEnabled, target: `platform:${plan.target.platformId}`, actualEnabled: actual, expectedEnabled: plan.target.desiredEnabled, writePerformed: false };
+  }
+  if (plan.kind === 'registry-edit') {
+    const target = targetPath(plan.workspaceRoot, plan.target.path);
+    const actual = sha256(readFileSync(target, 'utf8'));
+    return { schema: 'architecture-manager-verification/v1', ok: actual === plan.steps[0].newSha256, target: plan.target.path, actualSha256: actual, expectedSha256: plan.steps[0].newSha256, writePerformed: false };
   }
   throw new Error('TRANSACTION_KIND_UNSUPPORTED');
 }

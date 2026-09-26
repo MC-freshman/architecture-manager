@@ -2,8 +2,10 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { homedir } from 'node:os';
 import { listSoftware } from './software.mjs';
 import { inspectGit } from './git.mjs';
+import { EXTRA_DOCUMENTS, TOP_LEVEL_REQUIREMENTS } from './documents.mjs';
 
 export const FORMAL_TOP_LEVEL_DIRECTORIES = [
   '.workbuddy',
@@ -25,6 +27,12 @@ export const FORMAL_TOP_LEVEL_DIRECTORIES = [
 export const PLATFORM_IDS = ['codex', 'dsh', 'workbuddy', 'zcode', 'doubao', 'qoder'];
 export const SHARED_REPOSITORIES = ['tool', 'agent', 'software'];
 
+const PLATFORM_MARKERS = [
+  ['bridge/bridge.json', 'bridge'],
+  ['bridge/platform.md', 'platform chapter'],
+  ['bridge.json', 'bridge']
+];
+
 function asPosixPath(value) {
   return value.split(sep).join('/');
 }
@@ -42,6 +50,20 @@ function normalizeRoot(root) {
 
 function relativePath(root, target) {
   return asPosixPath(relative(root, target));
+}
+
+function localViewPath(root) {
+  const key = createHash('sha256').update(root, 'utf8').digest('hex').slice(0, 24);
+  const base = process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local');
+  return join(base, 'ArchitectureManager', 'views', `${key}.json`);
+}
+
+function readLocalView(root) {
+  const path = localViewPath(root);
+  const parsed = safeReadJson(path);
+  if (!parsed.ok || !parsed.value || typeof parsed.value !== 'object') return { path, enabled: {} };
+  const enabled = parsed.value.enabled && typeof parsed.value.enabled === 'object' ? parsed.value.enabled : {};
+  return { path, enabled };
 }
 
 function safeReadJson(filePath) {
@@ -103,6 +125,51 @@ function findBridge(root, platform) {
   return found ? relativePath(root, found) : null;
 }
 
+export function inspectPlatformDirectory(workspaceRoot, platformId, directoryRelative = platformId) {
+  const root = normalizeRoot(workspaceRoot);
+  if (typeof platformId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(platformId)) throw new Error('INVALID_PLATFORM_ID');
+  const selected = resolve(root, directoryRelative);
+  const candidate = existsSync(selected) ? realpathSync(selected) : selected;
+  const rel = relative(root, candidate);
+  if (rel.startsWith(`..${sep}`) || rel === '..' || isAbsolute(rel)) throw new Error('PLATFORM_PATH_OUTSIDE_WORKSPACE');
+  if (!PLATFORM_IDS.includes(platformId) || resolve(root, platformId) !== candidate) throw new Error('PLATFORM_DIRECTORY_MISMATCH');
+  const directoryExists = existsSync(candidate) && statSync(candidate).isDirectory();
+  const markers = PLATFORM_MARKERS.map(([marker, label]) => ({
+    path: asPosixPath(join(rel, marker)),
+    label,
+    exists: directoryExists && existsSync(join(candidate, marker)) && statSync(join(candidate, marker)).isFile()
+  }));
+  const bridge = markers.find((marker) => marker.label === 'bridge' && marker.exists)?.path || null;
+  const status = !directoryExists ? 'missing-directory' : bridge ? 'ready' : 'missing-bridge-marker';
+  return {
+    id: platformId,
+    directoryRelative: asPosixPath(rel),
+    directoryPath: candidate,
+    directoryExists,
+    bridge,
+    markers,
+    status,
+    validForView: directoryExists && Boolean(bridge)
+  };
+}
+
+function summarizeDocument(root, path) {
+  const absolute = resolve(root, path);
+  const content = readFileSync(absolute, 'utf8');
+  const checklist = [...content.matchAll(/^\s*-\s+\[([ xX])\]/gm)];
+  const done = checklist.filter((match) => match[1].toLowerCase() === 'x').length;
+  const pItems = [...content.replace(/\*\*/g, '').matchAll(/^\s*(?:\|\s*|#{1,6}\s*)?(P\d+[A-Za-z]?)(?=[：: \t|])/gmi)].map((match) => match[1].toUpperCase());
+  return {
+    path,
+    kind: TOP_LEVEL_REQUIREMENTS.has(path) ? 'top-level-requirements' : path.includes('实施表') ? 'implementation-table' : path.includes('方案') ? 'proposal' : path.includes('台账') || path.includes('LEDGER') ? 'ledger' : 'architecture-document',
+    bytes: Buffer.byteLength(content, 'utf8'),
+    checklistTotal: checklist.length,
+    checklistDone: done,
+    pItems: [...new Set(pItems)],
+    completionPercent: checklist.length ? Math.round((done / checklist.length) * 100) : null
+  };
+}
+
 export function scanWorkspace(workspaceRoot) {
   const root = normalizeRoot(workspaceRoot);
   const topLevel = readdirSync(root, { withFileTypes: true })
@@ -112,11 +179,11 @@ export function scanWorkspace(workspaceRoot) {
   const errors = [];
   const shared = SHARED_REPOSITORIES.map((repository) => listReleasePointers(root, repository));
   for (const item of shared) errors.push(...item.errors);
-  const platforms = PLATFORM_IDS.map((id) => ({
-    id,
-    directoryExists: existsSync(join(root, id)),
-    bridge: findBridge(root, id)
-  }));
+  const localView = readLocalView(root);
+  const platforms = PLATFORM_IDS.map((id) => {
+    const inspected = inspectPlatformDirectory(root, id);
+    return { ...inspected, enabled: localView.enabled[id] !== false };
+  });
   const versionsRoot = join(root, 'versions');
   const architectureDocuments = existsSync(versionsRoot)
     ? readdirSync(versionsRoot, { withFileTypes: true })
@@ -124,6 +191,16 @@ export function scanWorkspace(workspaceRoot) {
         .map((entry) => relativePath(root, join(versionsRoot, entry.name)))
         .sort()
     : [];
+  architectureDocuments.push(...EXTRA_DOCUMENTS.filter((path) => existsSync(join(root, path))));
+  const documentSummaries = architectureDocuments.map((path) => summarizeDocument(root, path));
+  const agents = [];
+  const skills = [];
+  const agentRegistryPath = join(root, 'agent', 'registry.json');
+  const toolRegistryPath = join(root, 'tool', 'registry.json');
+  const agentRegistry = safeReadJson(agentRegistryPath);
+  const toolRegistry = safeReadJson(toolRegistryPath);
+  if (agentRegistry.ok && Array.isArray(agentRegistry.value?.agents)) agents.push(...agentRegistry.value.agents);
+  if (toolRegistry.ok && Array.isArray(toolRegistry.value?.skills)) skills.push(...toolRegistry.value.skills);
 
   return {
     schema: 'architecture-manager-inventory/v1',
@@ -134,7 +211,15 @@ export function scanWorkspace(workspaceRoot) {
     sharedRepositories: shared,
     software: listSoftware(root),
     platforms,
+    localView: { path: localView.path, enabled: localView.enabled },
+    agents,
+    skills,
+    catalogRegistries: {
+      agent: { path: 'agent/registry.json', sha256: existsSync(agentRegistryPath) ? createHash('sha256').update(readFileSync(agentRegistryPath, 'utf8'), 'utf8').digest('hex') : null },
+      skill: { path: 'tool/registry.json', sha256: existsSync(toolRegistryPath) ? createHash('sha256').update(readFileSync(toolRegistryPath, 'utf8'), 'utf8').digest('hex') : null }
+    },
     architectureDocuments,
+    documentSummaries,
     git: inspectGit(root),
     errors,
     writePerformed: false

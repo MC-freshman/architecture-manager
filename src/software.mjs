@@ -51,6 +51,7 @@ function readSoftware(root, softwareId) {
     versionRoot: rel(root, versionRoot),
     manifestPath: rel(root, join(versionRoot, 'manifest.json')),
     recipePath: existsSync(join(versionRoot, 'recipes', 'windows.json')) ? rel(root, join(versionRoot, 'recipes', 'windows.json')) : null,
+    entrypoint: recipe?.launch?.entrypoint || recipe?.launch?.startup?.command || null,
     manualSteps: Array.isArray(recipe?.launch?.postStartupManualSteps) ? recipe.launch.postStartupManualSteps : [],
     versionCall: Array.isArray(recipe?.verify?.versionCall) ? recipe.verify.versionCall : null
   };
@@ -134,9 +135,12 @@ export function buildSoftwareLaunchPlan({ workspaceRoot, softwareId, mode = 'hea
     const interactive = software.kind === 'mcp-http' || software.kind === 'desktop-session' || software.manualSteps.length > 0;
     plan.steps.push({ operation: 'launch', transport: software.transport, sideEffects: interactive ? 'interactive' : 'local-process', consentRequired: true, dispatch: 'registered-provider-only' });
     if (interactive) plan.verification.push('if manual startup steps remain, return INTERACTIVE_REQUIRED rather than claiming ready');
+  } else if (mode === 'open-location') {
+    if (!software.bodyPath) throw new Error('SOFTWARE_BODY_PATH_UNDECLARED');
+    plan.steps.push({ operation: 'open-software-location', path: software.bodyPath, sideEffects: 'opens-system-file-manager', consentRequired: true, dispatch: 'electron-shell' });
+    plan.verification.push('path must exist and remain the recipe-declared software body path');
   } else {
     throw new Error('INVALID_SOFTWARE_MODE');
   }
   return plan;
 }
-

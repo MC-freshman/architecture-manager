@@ -16,17 +16,18 @@ function basePlan(kind, workspaceRoot, now) {
   };
 }
 
-export function buildPlatformViewPlan({ workspaceRoot, platformId, currentEnabled, desiredEnabled, now = new Date().toISOString() }) {
+export function buildPlatformViewPlan({ workspaceRoot, platformId, currentEnabled, desiredEnabled, directoryRelative = platformId, markers = [], now = new Date().toISOString() }) {
   if (typeof platformId !== 'string' || !RESOURCE_ID.test(platformId)) throw new Error('INVALID_PLATFORM_ID');
   if (typeof currentEnabled !== 'boolean' || typeof desiredEnabled !== 'boolean') throw new Error('INVALID_PLATFORM_STATE');
   const plan = basePlan('platform-view', workspaceRoot, now);
-  plan.target = { platformId, currentEnabled, desiredEnabled };
+  plan.target = { platformId, currentEnabled, desiredEnabled, directoryRelative, markers };
   plan.steps.push({
     operation: 'update-local-view',
     target: `platform:${platformId}`,
     oldValue: currentEnabled,
     newValue: desiredEnabled,
-    persistentStore: '%LOCALAPPDATA%/ArchitectureManager'
+    persistentStore: '%LOCALAPPDATA%/ArchitectureManager/views',
+    markerCheck: markers
   });
   plan.verification.push('local view state is reversible and no platform directory is deleted');
   return plan;

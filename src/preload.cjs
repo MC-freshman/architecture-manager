@@ -1,15 +1,23 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('architectureManager', Object.freeze({
+  confirm: (message) => ipcRenderer.invoke('ui:confirm', message),
   getDefaultWorkspace: () => ipcRenderer.invoke('workspace:default'),
   selectWorkspace: () => ipcRenderer.invoke('workspace:select'),
+  selectDirectory: () => ipcRenderer.invoke('workspace:select-directory'),
   scanWorkspace: (root) => ipcRenderer.invoke('workspace:scan', root),
+  inspectPlatform: (input) => ipcRenderer.invoke('platform:inspect', input),
   previewPlatformPlan: (input) => ipcRenderer.invoke('plan:platform-view', input),
   previewResourcePlan: (input) => ipcRenderer.invoke('plan:resource-pointer', input),
+  readCatalogEntry: (input) => ipcRenderer.invoke('catalog:read', input),
+  readSkillContent: (input) => ipcRenderer.invoke('skill:read', input),
+  selectCatalog: (input) => ipcRenderer.invoke('catalog:select', input),
+  previewRegistryPlan: (input) => ipcRenderer.invoke('plan:registry', input),
   readDocument: (input) => ipcRenderer.invoke('document:read', input),
   previewDocumentPlan: (input) => ipcRenderer.invoke('plan:document', input),
   softwareHealth: (input) => ipcRenderer.invoke('software:health', input),
   previewSoftwarePlan: (input) => ipcRenderer.invoke('plan:software', input),
+  openSoftwareLocation: (input) => ipcRenderer.invoke('software:open-location', input),
   inspectGit: (root) => ipcRenderer.invoke('git:inspect', root),
   scanSensitiveFiles: (root) => ipcRenderer.invoke('git:sensitive-scan', root),
   previewGitPlan: (input) => ipcRenderer.invoke('plan:git', input),

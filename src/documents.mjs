@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, normalize, relative, resolve, sep } from 'node:path';
 
-const TOP_LEVEL_REQUIREMENTS = new Set(['versions/架构基本原则.md']);
+export const TOP_LEVEL_REQUIREMENTS = new Set(['versions/架构基本原则.md', 'AGENTS.md', 'AI_ARCHITECTURE_SYSTEM_PROMPT.md', 'agentic-workflow-master-manual.md', 'HANDOFF.md', 'invocation-adapters-spec.md']);
+export const EXTRA_DOCUMENTS = [...TOP_LEVEL_REQUIREMENTS].filter((path) => !path.includes('/')).concat(['architecture-manager/README.md']);
 
 function sha256(text) {
   return createHash('sha256').update(text, 'utf8').digest('hex');
@@ -14,7 +15,7 @@ function normalizeRelativePath(relativePath) {
   if (normalized.startsWith('../') || normalized === '..' || normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized)) {
     throw new Error('DOCUMENT_PATH_OUTSIDE_WORKSPACE');
   }
-  if (!(normalized.startsWith('versions/') || normalized.startsWith('docs-site/docs/')) || !normalized.endsWith('.md')) {
+  if (!(normalized.startsWith('versions/') || normalized.startsWith('docs-site/docs/') || EXTRA_DOCUMENTS.includes(normalized)) || !normalized.endsWith('.md')) {
     throw new Error('DOCUMENT_PATH_NOT_ALLOWED');
   }
   return normalized;
@@ -76,4 +77,3 @@ export function buildDocumentPlan({ workspaceRoot, relativePath, beforeText, aft
     verification: ['re-read the file before apply and require the baseline hash', 'run document build/format checks after apply', 'preserve the old content for rollback']
   };
 }
-

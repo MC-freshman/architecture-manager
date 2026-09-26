@@ -4,8 +4,9 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { assertWithinRoot, scanWorkspace } from '../src/inventory.mjs';
+import { assertWithinRoot, inspectPlatformDirectory, scanWorkspace } from '../src/inventory.mjs';
 import { buildPlatformViewPlan, buildResourcePointerPlan } from '../src/plans.mjs';
+import { buildRegistryPlan, readCatalogEntry } from '../src/catalog.mjs';
 import { buildDocumentPlan } from '../src/documents.mjs';
 import { buildSoftwareLaunchPlan, listSoftware } from '../src/software.mjs';
 import { backupAndRestoreFixture, buildGitPlan, scanSensitiveFiles } from '../src/git.mjs';
@@ -35,6 +36,49 @@ test('scans a workspace without writing', () => {
     assert.equal(result.sharedRepositories[0].pointers[0].version, '1.0.0');
     assert.equal(result.platforms.find((item) => item.id === 'codex').bridge, 'codex/bridge/bridge.json');
     assert.deepEqual(result.architectureDocuments, ['versions/architecture.md']);
+    assert.equal(result.documentSummaries[0].bytes > 0, true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('validates platform markers and persists only a local view plan', () => {
+  const root = fixture();
+  const previous = process.env.LOCALAPPDATA;
+  process.env.LOCALAPPDATA = join(root, 'localappdata');
+  try {
+    const inspected = inspectPlatformDirectory(root, 'codex');
+    assert.equal(inspected.validForView, true);
+    const plan = buildPlatformViewPlan({ workspaceRoot: root, platformId: 'codex', currentEnabled: true, desiredEnabled: false, directoryRelative: inspected.directoryRelative, markers: inspected.markers });
+    const applied = applyPlan({ plan, auditRoot: join(root, 'audit') });
+    assert.equal(applied.status, 'applied');
+    assert.equal(verifyPlanTarget({ plan }).actualEnabled, false);
+    assert.equal(existsSync(join(root, 'codex', 'bridge', 'bridge.json')), true);
+  } finally {
+    process.env.LOCALAPPDATA = previous;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('reads full agent/skill entries and applies a guarded registry plan', () => {
+  const root = fixture();
+  mkdirSync(join(root, 'agent', 'demo', 'versions', '1.0.0'), { recursive: true });
+  mkdirSync(join(root, 'tool', '_registry'), { recursive: true });
+  writeFileSync(join(root, 'agent', 'demo', 'versions', '1.0.0', 'manifest.json'), JSON.stringify({ id: 'demo', version: '1.0.0' }));
+  writeFileSync(join(root, 'agent', 'demo', 'versions', '1.0.0', 'prompt.md'), '# Demo agent\n');
+  writeFileSync(join(root, 'agent', 'registry.json'), JSON.stringify({ schema: 'test', agents: [{ id: 'demo', current: 'agent/demo/current.json', version: '1.0.0', enabled: true }] }, null, 2));
+  writeFileSync(join(root, 'tool', '_registry', 'skills-demo.json'), JSON.stringify({ skills: [{ id: 'demo-skill', version: '1.0.0' }] }, null, 2));
+  writeFileSync(join(root, 'tool', 'registry.json'), JSON.stringify({ schema: 'test', skills: [{ id: 'skills-demo', path: '_registry/skills-demo.json', kind: 'skill-catalog', enabled: true }] }, null, 2));
+  try {
+    const detail = readCatalogEntry({ workspaceRoot: root, kind: 'agent', id: 'demo' });
+    assert.match(detail.prompt, /Demo agent/);
+    const skill = readCatalogEntry({ workspaceRoot: root, kind: 'skill', id: 'skills-demo' });
+    assert.equal(skill.skillCount, 1);
+    const before = readFileSync(join(root, 'agent', 'registry.json'), 'utf8');
+    const plan = buildRegistryPlan({ workspaceRoot: root, kind: 'agent', action: 'disable', id: 'demo', baselineSha256: createHash('sha256').update(before, 'utf8').digest('hex') });
+    const applied = applyPlan({ plan, afterText: plan.payload.afterText, auditRoot: join(root, 'audit') });
+    assert.equal(applied.status, 'applied');
+    assert.equal(JSON.parse(readFileSync(join(root, 'agent', 'registry.json'), 'utf8')).agents[0].enabled, false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
