@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('architectureManager', Object.freeze({
   getDefaultWorkspace: () => ipcRenderer.invoke('workspace:default'),

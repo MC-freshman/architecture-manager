@@ -43,7 +43,9 @@ function createWindow() {
     minHeight: 680,
     show: false,
     webPreferences: {
-      preload: join(__dirname, 'preload.mjs'),
+      // Sandboxed Electron preload scripts must be CommonJS.  An ESM preload
+      // is rejected by Electron before contextBridge can expose the API.
+      preload: join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true
