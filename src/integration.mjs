@@ -63,7 +63,12 @@ function platformCandidates(root, platformId) {
   const legacy = join(platformRoot, 'bridge.json');
   if (existsSync(legacy) && statSync(legacy).isFile()) paths.push(relativePath(root, legacy));
   if (!paths.length && existsSync(bridge) && statSync(bridge).isDirectory()) paths.push(`${platformId}/bridge/bridge.json`);
-  if (existsSync(bridge) && statSync(bridge).isDirectory() && !paths.includes(`${platformId}/bridge/runner-config.json`)) paths.push(`${platformId}/bridge/runner-config.json`);
+  if (existsSync(bridge) && statSync(bridge).isDirectory()) {
+    for (const standard of ['runner-config.json', 'capabilities.json']) {
+      const candidate = `${platformId}/bridge/${standard}`;
+      if (!paths.includes(candidate)) paths.push(candidate);
+    }
+  }
   return [...new Set(paths)].sort();
 }
 

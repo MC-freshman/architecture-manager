@@ -336,7 +336,7 @@ test('plans and applies GUI integration for platform config and shared resource 
 test('rejects GUI integration paths outside the existing workspace shape and raw secrets', () => {
   const root = fixture();
   try {
-    assert.deepEqual(listIntegrationTargets({ workspaceRoot: root, kind: 'platform', targetId: 'codex' }).paths, ['codex/bridge/bridge.json', 'codex/bridge/runner-config.json']);
+    assert.deepEqual(listIntegrationTargets({ workspaceRoot: root, kind: 'platform', targetId: 'codex' }).paths, ['codex/bridge/bridge.json', 'codex/bridge/capabilities.json', 'codex/bridge/runner-config.json']);
     const current = readIntegrationTarget({ workspaceRoot: root, kind: 'platform', targetId: 'codex' });
     assert.throws(() => buildIntegrationPlan({ workspaceRoot: root, kind: 'platform', targetId: 'codex', relativePath: '../outside.json', beforeText: current.content, afterText: '{}', baselineSha256: current.sha256 }), /INTEGRATION_TARGET_OUTSIDE_WORKSPACE|PLATFORM_CONFIG_TARGET_NOT_ALLOWED/);
     assert.throws(() => buildIntegrationPlan({ workspaceRoot: root, kind: 'platform', targetId: 'codex', relativePath: current.path, beforeText: current.content, afterText: '{"token":"plain-text"}', baselineSha256: current.sha256 }), /RAW_SECRET_NOT_ALLOWED/);
