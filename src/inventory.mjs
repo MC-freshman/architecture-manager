@@ -192,7 +192,14 @@ export function scanWorkspace(workspaceRoot) {
         .sort()
     : [];
   architectureDocuments.push(...EXTRA_DOCUMENTS.filter((path) => existsSync(join(root, path))));
-  const documentSummaries = architectureDocuments.map((path) => summarizeDocument(root, path));
+  const runtimeDocsRoot = join(root, 'docs-site', 'docs', 'runtime');
+  if (existsSync(runtimeDocsRoot) && statSync(runtimeDocsRoot).isDirectory()) {
+    architectureDocuments.push(...readdirSync(runtimeDocsRoot, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
+      .map((entry) => relativePath(root, join(runtimeDocsRoot, entry.name))));
+  }
+  const uniqueArchitectureDocuments = [...new Set(architectureDocuments)].sort();
+  const documentSummaries = uniqueArchitectureDocuments.map((path) => summarizeDocument(root, path));
   const agents = [];
   const skills = [];
   const agentRegistryPath = join(root, 'agent', 'registry.json');
@@ -218,7 +225,7 @@ export function scanWorkspace(workspaceRoot) {
       agent: { path: 'agent/registry.json', sha256: existsSync(agentRegistryPath) ? createHash('sha256').update(readFileSync(agentRegistryPath, 'utf8'), 'utf8').digest('hex') : null },
       skill: { path: 'tool/registry.json', sha256: existsSync(toolRegistryPath) ? createHash('sha256').update(readFileSync(toolRegistryPath, 'utf8'), 'utf8').digest('hex') : null }
     },
-    architectureDocuments,
+    architectureDocuments: uniqueArchitectureDocuments,
     documentSummaries,
     git: inspectGit(root),
     errors,

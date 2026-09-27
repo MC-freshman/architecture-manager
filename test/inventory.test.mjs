@@ -11,6 +11,7 @@ import { buildDocumentPlan } from '../src/documents.mjs';
 import { buildSoftwareLaunchPlan, listSoftware } from '../src/software.mjs';
 import { backupAndRestoreFixture, buildGitPlan, scanSensitiveFiles } from '../src/git.mjs';
 import { applyPlan, verifyPlanTarget } from '../src/transactions.mjs';
+import { buildIntegrationPlan, listIntegrationTargets, readIntegrationTarget } from '../src/integration.mjs';
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'architecture-manager-'));
@@ -22,6 +23,8 @@ function fixture() {
   writeFileSync(join(root, 'tool', 'demo', 'current.json'), JSON.stringify({ id: 'demo', version: '1.0.0' }));
   writeFileSync(join(root, 'agent', 'demo', 'current.json'), JSON.stringify({ id: 'demo-agent', version: '1.0.0' }));
   writeFileSync(join(root, 'software', 'demo', 'current.json'), JSON.stringify({ id: 'demo-software', version: '1.0.0' }));
+  mkdirSync(join(root, 'software', 'demo', 'versions', '1.1.0'), { recursive: true });
+  writeFileSync(join(root, 'software', 'demo', 'versions', '1.1.0', 'SHA256SUMS'), 'demo\n');
   writeFileSync(join(root, 'codex', 'bridge', 'bridge.json'), '{}');
   writeFileSync(join(root, 'versions', 'architecture.md'), '# test');
   return root;
@@ -285,6 +288,58 @@ test('applies and verifies a hashed shared current pointer plan', () => {
     assert.equal(verifyPlanTarget({ plan }).ok, true);
     const repeated = applyPlan({ plan, auditRoot });
     assert.equal(repeated.status, 'already-applied');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('plans and applies GUI integration for platform config and shared resource pointer', () => {
+  const root = fixture();
+  const auditRoot = join(root, 'audit');
+  try {
+    const platform = readIntegrationTarget({ workspaceRoot: root, kind: 'platform', targetId: 'codex' });
+    assert.equal(platform.path, 'codex/bridge/bridge.json');
+    const platformPlan = buildIntegrationPlan({
+      workspaceRoot: root,
+      kind: 'platform',
+      targetId: 'codex',
+      mode: 'config',
+      relativePath: platform.path,
+      beforeText: platform.content,
+      afterText: '{"platform":"codex","bridgeVersion":"1.0.0"}\n',
+      baselineSha256: platform.sha256
+    });
+    assert.equal(platformPlan.kind, 'integration-config');
+    assert.equal(applyPlan({ plan: platformPlan, afterText: platformPlan.payload.afterText, auditRoot }).status, 'applied');
+    assert.equal(verifyPlanTarget({ plan: platformPlan }).ok, true);
+
+    const current = readIntegrationTarget({ workspaceRoot: root, kind: 'software', targetId: 'demo' });
+    const pointerPlan = buildIntegrationPlan({
+      workspaceRoot: root,
+      kind: 'software',
+      targetId: 'demo',
+      mode: 'pointer',
+      relativePath: current.path,
+      baselineSha256: current.sha256,
+      targetVersion: '1.1.0',
+      availableVersions: ['1.0.0', '1.1.0']
+    });
+    assert.equal(pointerPlan.kind, 'integration-pointer');
+    assert.equal(applyPlan({ plan: pointerPlan, auditRoot }).status, 'applied');
+    assert.equal(JSON.parse(readFileSync(join(root, 'software', 'demo', 'current.json'), 'utf8')).version, '1.1.0');
+    assert.equal(verifyPlanTarget({ plan: pointerPlan }).ok, true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('rejects GUI integration paths outside the existing workspace shape and raw secrets', () => {
+  const root = fixture();
+  try {
+    assert.deepEqual(listIntegrationTargets({ workspaceRoot: root, kind: 'platform', targetId: 'codex' }).paths, ['codex/bridge/bridge.json']);
+    const current = readIntegrationTarget({ workspaceRoot: root, kind: 'platform', targetId: 'codex' });
+    assert.throws(() => buildIntegrationPlan({ workspaceRoot: root, kind: 'platform', targetId: 'codex', relativePath: '../outside.json', beforeText: current.content, afterText: '{}', baselineSha256: current.sha256 }), /INTEGRATION_TARGET_OUTSIDE_WORKSPACE|PLATFORM_CONFIG_TARGET_NOT_ALLOWED/);
+    assert.throws(() => buildIntegrationPlan({ workspaceRoot: root, kind: 'platform', targetId: 'codex', relativePath: current.path, beforeText: current.content, afterText: '{"token":"plain-text"}', baselineSha256: current.sha256 }), /RAW_SECRET_NOT_ALLOWED/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

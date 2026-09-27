@@ -56,6 +56,14 @@ function App() {
   const [skillFilter, setSkillFilter] = useState('');
   const [resourceFilter, setResourceFilter] = useState('');
   const [targetVersions, setTargetVersions] = useState({});
+  const [integrationKind, setIntegrationKind] = useState('platform');
+  const [integrationTargetId, setIntegrationTargetId] = useState('');
+  const [integrationMode, setIntegrationMode] = useState('config');
+  const [integrationPaths, setIntegrationPaths] = useState([]);
+  const [integrationPath, setIntegrationPath] = useState('');
+  const [integrationTarget, setIntegrationTarget] = useState(null);
+  const [integrationText, setIntegrationText] = useState('');
+  const [integrationTargetVersion, setIntegrationTargetVersion] = useState('');
 
   const scan = async (root) => {
     if (!root) return;
@@ -110,6 +118,66 @@ function App() {
   const software = inventory?.software || [];
   const agents = useMemo(() => (inventory?.agents || []).filter((item) => !catalogFilter || item.id.toLowerCase().includes(catalogFilter.toLowerCase())), [inventory, catalogFilter]);
   const skills = useMemo(() => (inventory?.skills || []).filter((item) => !catalogFilter || item.id.toLowerCase().includes(catalogFilter.toLowerCase())), [inventory, catalogFilter]);
+  const integrationOptions = useMemo(() => {
+    if (integrationKind === 'platform') return (inventory?.platforms || []).map((item) => ({ id: item.id, label: item.id }));
+    if (integrationKind === 'software') return (inventory?.software || []).filter((item) => !['burp-suite', 'veracrypt'].includes(item.id)).map((item) => ({ id: item.id, label: `${item.id} · ${item.version || '无 current'}` }));
+    return [{ id: '__registry__', label: `${integrationKind}/registry.json（共享仓）` }, ...resources.filter((item) => item.repository === integrationKind).map((item) => ({ id: item.resourceId, label: `${item.resourceId} · ${item.version || '无 current'}` }))];
+  }, [integrationKind, inventory, resources]);
+
+  useEffect(() => {
+    const first = integrationOptions[0]?.id || '';
+    if (!integrationOptions.some((item) => item.id === integrationTargetId)) setIntegrationTargetId(first);
+  }, [integrationOptions, integrationTargetId]);
+
+  useEffect(() => {
+    if (!workspace || !integrationTargetId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const listed = await api.listIntegrationTargets({ workspaceRoot: workspace, kind: integrationKind, targetId: integrationTargetId });
+        if (cancelled) return;
+        const preferred = integrationKind === 'platform' || integrationMode === 'config' ? listed.paths[0] : listed.paths.find((path) => path.endsWith(`/${integrationMode === 'pointer' ? 'current.json' : 'registry.json'}`)) || listed.paths[0];
+        setIntegrationPaths(listed.paths);
+        setIntegrationPath(preferred || '');
+        if (preferred) {
+          const detail = await api.readIntegrationTarget({ workspaceRoot: workspace, kind: integrationKind, targetId: integrationTargetId, relativePath: preferred });
+          if (cancelled) return;
+          setIntegrationTarget(detail);
+          setIntegrationText(detail.content || '');
+          if (integrationMode === 'pointer') setIntegrationTargetVersion('');
+        }
+      } catch (error) {
+        if (!cancelled) setMessage(`接入目标读取失败：${friendlyError(error)}`);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [workspace, integrationKind, integrationTargetId, integrationMode]);
+
+  const reloadIntegrationTarget = async () => {
+    if (!workspace || !integrationTargetId || !integrationPath) return;
+    try {
+      const detail = await api.readIntegrationTarget({ workspaceRoot: workspace, kind: integrationKind, targetId: integrationTargetId, relativePath: integrationPath });
+      setIntegrationTarget(detail); setIntegrationText(detail.content || '');
+      setMessage(`已重新读取 ${detail.path}，基线哈希已更新。`);
+    } catch (error) { setMessage(`接入目标读取失败：${friendlyError(error)}`); }
+  };
+
+  const previewIntegration = async () => {
+    if (!workspace || !integrationTarget || !integrationPath) return;
+    try {
+      const input = { workspaceRoot: workspace, kind: integrationKind, targetId: integrationTargetId, mode: integrationMode, relativePath: integrationPath, beforeText: integrationTarget.content, afterText: integrationText, baselineSha256: integrationTarget.sha256 };
+      if (integrationMode === 'pointer') {
+        const resource = resources.find((item) => item.repository === integrationKind && item.resourceId === integrationTargetId);
+        input.currentVersion = resource?.version;
+        input.targetVersion = integrationTargetVersion;
+        input.availableVersions = resource?.availableVersions || [];
+      }
+      const plan = await api.previewIntegrationPlan(input);
+      setPlanPreview(plan);
+      setPlanPayload(plan.payload?.afterText ? { afterText: plan.payload.afterText } : null);
+      setMessage(`已生成 ${integrationKind}/${integrationTargetId} 接入计划，尚未写入。`);
+    } catch (error) { setMessage(`接入计划被拒绝：${friendlyError(error)}`); }
+  };
 
   const previewPlatform = async (platform) => {
     const currentEnabled = platform.enabled;
@@ -292,7 +360,7 @@ function App() {
       }
       return;
     }
-    if (!['document-edit', 'resource-pointer', 'platform-view', 'registry-edit'].includes(planPreview.kind)) return;
+    if (!['document-edit', 'resource-pointer', 'platform-view', 'registry-edit', 'integration-config', 'integration-pointer', 'integration-registry'].includes(planPreview.kind)) return;
     const target = planPreview.target?.path || (planPreview.kind === 'platform-view' ? `本地管理视图/platform:${planPreview.target?.platformId}` : `${planPreview.target?.repository}/${planPreview.target?.resourceId}/current.json`);
     if (!await api.confirm(`确认执行此计划？\n\n目标：${target}\n\n执行前会再次核对文件状态，失败会阻止覆盖。`)) return;
     setBusy(true);
@@ -318,7 +386,7 @@ function App() {
         <div>
           <div className="eyebrow">ARCHITECTURE MANAGER · 3.4.0</div>
           <h1>架构管理台</h1>
-          <p className="subtitle">独立用户版 · 本地只读盘点</p>
+          <p className="subtitle">独立用户版 · 只读盘点 + 计划式接入</p>
         </div>
         <button className="primary-button" onClick={async () => scan(await api.selectWorkspace())} disabled={busy}>
           {busy ? '扫描中…' : '选择工作区'}
@@ -329,7 +397,7 @@ function App() {
         <span className="status-dot" />
         <span className="workspace-label">当前工作区</span>
         <code>{workspace || '尚未选择'}</code>
-        <span className="read-only-badge">只读模式</span>
+        <span className="read-only-badge">默认只读 · 写入须确认</span>
       </section>
 
       <section className="content">
@@ -355,6 +423,19 @@ function App() {
               {!inventory && <div className="empty">选择工作区后显示平台。添加前会检查目录和 bridge 标记文件。</div>}
             </div>
           </section>
+          <section className="panel integration-panel">
+            <div className="panel-title"><span>手动接入向导</span><span className="muted">plan → confirm → verify</span></div>
+            <div className="integration-help">今后新增或切换 tool、agent、software、platform 都可以从这里生成带基线哈希的计划。DSH 按已有 bridge/config 处理；Burp/VeraCrypt 等特殊软件能力不在本向导内验证。</div>
+            <div className="integration-form">
+              <label>对象类型<select value={integrationKind} onChange={(event) => { const next = event.target.value; setIntegrationKind(next); setIntegrationMode(next === 'platform' ? 'config' : 'pointer'); setIntegrationTargetId(''); setIntegrationTarget(null); }}><option value="platform">platform</option><option value="tool">tool</option><option value="agent">agent</option><option value="software">software</option></select></label>
+              <label>对象<select value={integrationTargetId} onChange={(event) => { const next = event.target.value; setIntegrationTargetId(next); if (next === '__registry__') setIntegrationMode('registry'); }}><option value="">选择对象</option>{integrationOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+              {integrationKind !== 'platform' && <label>动作<select value={integrationMode} onChange={(event) => setIntegrationMode(event.target.value)}><option value="pointer">切换 current 指针</option><option value="registry">修改 registry</option></select></label>}
+              <label>目标文件<select value={integrationPath} onChange={(event) => { setIntegrationPath(event.target.value); const selected = integrationPaths.find((item) => item === event.target.value); if (selected) api.readIntegrationTarget({ workspaceRoot: workspace, kind: integrationKind, targetId: integrationTargetId, relativePath: selected }).then((detail) => { setIntegrationTarget(detail); setIntegrationText(detail.content || ''); }).catch((error) => setMessage(`接入目标读取失败：${friendlyError(error)}`)); }}><option value="">选择目标</option>{integrationPaths.map((path) => <option key={path} value={path}>{path}</option>)}</select></label>
+              {integrationMode === 'pointer' && integrationTarget && <label>目标版本<select value={integrationTargetVersion} onChange={(event) => setIntegrationTargetVersion(event.target.value)}><option value="">选择已发布版本</option>{(resources.find((item) => item.repository === integrationKind && item.resourceId === integrationTargetId)?.availableVersions || []).map((version) => <option key={version} value={version}>{version}</option>)}</select></label>}
+            </div>
+            {integrationTarget && integrationMode !== 'pointer' && <><div className="path-line">基线 SHA-256：{integrationTarget.sha256 || '新文件'} · 目标：{integrationTarget.path}</div><textarea className="integration-editor" value={integrationText} onChange={(event) => setIntegrationText(event.target.value)} spellCheck={false} /></>}
+            <div className="resource-actions"><button className="small-button" onClick={reloadIntegrationTarget} disabled={!integrationTarget}>重新读取目标</button><button className="small-button primary-small" onClick={previewIntegration} disabled={!integrationTarget || (integrationMode === 'pointer' ? !integrationTargetVersion : !integrationText)}>生成接入计划</button></div>
+          </section>
           <section className="panel catalog-panel">
             <div className="panel-title"><span>Agent 与 Skill 管理</span><div className="panel-tools"><input className="filter-input" value={catalogFilter} onChange={(event) => setCatalogFilter(event.target.value)} placeholder="筛选 id" />{inventory && <><button className="small-button" onClick={() => previewRegistryAction('agent', 'add')}>从文件添加 agent</button><button className="small-button" onClick={() => previewRegistryAction('skill', 'add')}>从文件添加 skill 目录</button></>}</div></div>
             <div className="catalog-columns">
@@ -366,7 +447,7 @@ function App() {
             {!inventory && <div className="empty">选择工作区后读取 agent registry 和 skill 目录。正文只读查看，启用/停用/移除先生成计划。</div>}
           </section>
           <section className="panel">
-            <div className="panel-title"><span>安全边界</span><span className="muted">P1</span></div>
+          <div className="panel-title"><span>安全边界</span><span className="muted">P1–P4</span></div>
             <ul className="checks">
               <li><span className="check">✓</span>页面没有 Node 文件系统权限</li>
               <li><span className="check">✓</span>扫描器明确标记 writePerformed=false</li>
@@ -380,7 +461,7 @@ function App() {
               <li>点击“选择工作区”，选中自己的 `E:\ai` 架构目录。</li>
               <li>平台先看目录和 bridge 标记；添加、排除只改变本机管理视图，不删除平台文件。</li>
               <li>Agent/Skill 点“查看全部”看正文，启用、停用、移除和添加都会先生成 registry 计划。</li>
-              <li>更新计划按 P 项和复选框显示进度；文档编辑、指针和 registry 写入都要确认。</li>
+              <li>手动接入向导统一处理平台配置、tool/agent/software 指针和 registry；每次都是 plan → 确认 → verify。</li>
               <li>软件中心显示绝对路径、相对路径和入口；打开目录或启动都保留人工确认。</li>
             </ol>
           </section>
@@ -450,9 +531,9 @@ function App() {
           </section>
         </div>
         {planPreview && <section className="plan-preview">
-          <div className="panel-title"><span>计划预览</span><div className="plan-buttons">{['document-edit', 'resource-pointer', 'platform-view', 'registry-edit'].includes(planPreview.kind) && <button className="small-button primary-small" onClick={executePlan}>确认并执行</button>}{planPreview.kind === 'software-action' && planPreview.target?.mode === 'open-location' && <button className="small-button primary-small" onClick={executePlan}>确认打开目录</button>}<button className="small-button" onClick={() => { setPlanPreview(null); setPlanPayload(null); }}>关闭</button></div></div>
+          <div className="panel-title"><span>计划预览</span><div className="plan-buttons">{['document-edit', 'resource-pointer', 'platform-view', 'registry-edit', 'integration-config', 'integration-pointer', 'integration-registry'].includes(planPreview.kind) && <button className="small-button primary-small" onClick={executePlan}>确认并执行</button>}{planPreview.kind === 'software-action' && planPreview.target?.mode === 'open-location' && <button className="small-button primary-small" onClick={executePlan}>确认打开目录</button>}<button className="small-button" onClick={() => { setPlanPreview(null); setPlanPayload(null); }}>关闭</button></div></div>
           <div className="plan-meta"><code>{planPreview.planId}</code><span className="read-only-badge">尚未执行</span></div>
-          {['document-edit', 'resource-pointer', 'platform-view', 'registry-edit'].includes(planPreview.kind) && <div className="plan-explain">执行前会重新检查基线哈希；确认后才会写入，执行结果会立即回读验证。平台排除只写本机管理视图，不删除目录。</div>}
+          {['document-edit', 'resource-pointer', 'platform-view', 'registry-edit', 'integration-config', 'integration-pointer', 'integration-registry'].includes(planPreview.kind) && <div className="plan-explain">执行前会重新检查基线哈希；确认后才会写入，执行结果会立即回读验证。平台排除只写本机管理视图，不删除目录。</div>}
           {planPreview.kind === 'software-action' && <div className="plan-explain">软件动作需要人工确认；启动计划仍由已登记 connector/provider 处理，打开位置只会打开配方声明的目录。</div>}
           <pre>{JSON.stringify(planPreview, null, 2)}</pre>
         </section>}
