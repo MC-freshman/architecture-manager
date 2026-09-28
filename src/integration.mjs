@@ -201,6 +201,24 @@ export function buildIntegrationPlan({ workspaceRoot, kind, targetId, mode = 'co
     plan.target = { kind, targetId, mode, path };
     plan.steps.push({ operation: 'replace-platform-config', target: path, oldSha256: current.sha256, newSha256: sha256(afterText), oldExists: current.exists, checkpoint: true });
     plan.payload = { afterText };
+    const bridgeRoot = `${targetId}/bridge/`;
+    const configCandidates = [`${bridgeRoot}runner-config.json`, `${bridgeRoot}${targetId}-config.json`];
+    const configPath = configCandidates.find((candidate) => existsSync(pathFor(root, candidate)));
+    if (configPath) {
+      const configBefore = readText(root, configPath);
+      const config = parseJson(configBefore.content);
+      if (config.platform !== targetId) throw new Error('PLATFORM_CONFIG_ID_MISMATCH');
+      const currentRef = typeof config.bridge === 'string' ? resolve(config.bridge) : null;
+      const canonicalPath = pathFor(root, path);
+      const legacyPath = pathFor(root, `${targetId}/bridge/bridge.json`);
+      if (currentRef && currentRef !== canonicalPath && currentRef !== legacyPath) throw new Error('PLATFORM_BRIDGE_REFERENCE_UNKNOWN');
+      if (currentRef !== canonicalPath) {
+        const companionAfterText = `${JSON.stringify({ ...config, bridge: canonicalPath }, null, 2)}\n`;
+        plan.steps.push({ operation: 'update-runner-bridge-reference', target: configPath, oldSha256: configBefore.sha256, newSha256: sha256(companionAfterText), checkpoint: true });
+        plan.payload.companionAfterText = companionAfterText;
+        plan.verification.push('verify the client runner points to the canonical bridge');
+      }
+    }
     return plan;
   }
   if (!RESOURCE_KINDS.has(kind)) throw new Error('INVALID_INTEGRATION_KIND');

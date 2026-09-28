@@ -24,7 +24,7 @@ test('renderer domains stay split and write kinds remain centralized', () => {
 
   assert.deepEqual(PLAN_WRITE_KINDS, [
     'document-edit', 'resource-pointer', 'platform-view', 'registry-edit',
-    'integration-config', 'integration-pointer', 'integration-registry', 'software-import'
+    'integration-config', 'integration-pointer', 'integration-registry', 'software-import', 'software-recipe-publish'
   ]);
   assert.match(friendlyError(new Error('EXTERNAL_CHANGE_DETECTED')), /目标文件已被其他程序修改/);
 });

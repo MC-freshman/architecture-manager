@@ -13,10 +13,10 @@ test('application boundary exposes the complete IPC domain surface', () => {
   const expected = [
     'applyPlan', 'buildDocumentPlan', 'buildGitPlan', 'buildIntegrationPlan',
     'buildPlatformViewPlan', 'buildRegistryPlan', 'buildResourcePointerPlan',
-    'buildSoftwareImportPlan', 'buildSoftwareLaunchPlan', 'healthSoftware', 'inspectGit',
-    'inspectPlatformConnection', 'inspectPlatformDirectory', 'inspectRegistration', 'listIntegrationTargets',
+    'buildSoftwareImportPlan', 'buildSoftwareLaunchPlan', 'buildSoftwareRecipePlan', 'healthSoftware', 'inspectGit',
+    'inspectPlatformConnection', 'inspectPlatformDirectory', 'inspectRegistration', 'listIntegrationTargets', 'listSoftwareIntakes',
     'readCatalogEntry', 'readDocument', 'readIntegrationTarget', 'readSkillContent',
-    'runPlatformCheck', 'scanSensitiveFiles', 'scanWorkspace', 'suggestPlatformBridge', 'verifyPlanTarget', 'verifySoftwareImport'
+    'runPlatformCheck', 'scanSensitiveFiles', 'scanWorkspace', 'suggestPlatformBridge', 'verifyPlanTarget', 'verifySoftwareImport', 'verifySoftwareRecipe'
   ];
   assert.deepEqual(Object.keys(api).sort(), expected.sort());
 });

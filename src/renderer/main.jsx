@@ -338,6 +338,15 @@ function App() {
     } catch (error) { setMessage(`软件安置计划被拒绝：${friendlyError(error)}`); }
   };
 
+  const previewSoftwareRecipe = async (selection) => {
+    if (!await api.confirm(`确认只读询问 ${selection.softwareId} 的版本？\n\n管理台会启动你选定的程序并传入 ${selection.versionFlag}；程序本身仍可能有副作用。请仅对可信软件继续。`)) return;
+    try {
+      const plan = await api.previewSoftwareRecipePlan({ workspaceRoot: workspace, ...selection });
+      setPlanPreview(plan); setPlanPayload(null);
+      setMessage(`已从真实程序取得版本输出并生成配方计划；尚未发布，且只声明“版本查询”能力。`);
+    } catch (error) { setMessage(`配方计划被拒绝：${friendlyError(error)}`); }
+  };
+
   const previewSoftwareLocation = async (item) => {
     try {
       const plan = await api.previewSoftwarePlan({ workspaceRoot: workspace, softwareId: item.id, mode: 'open-location' });
@@ -391,7 +400,7 @@ function App() {
       setGitDetails(refreshed.git);
       setPlanPreview(null);
       setPlanPayload(null);
-      setMessage(planPreview.kind === 'software-import' ? `软件本体安置与恢复演练${verification.ok ? '通过' : '未通过'}；尚未发布配方，也未接入连接器。` : `计划已${applied.status === 'already-applied' ? '确认已执行' : '执行'}，验证${verification.ok ? '通过' : '未通过'}。`);
+      setMessage(planPreview.kind === 'software-import' ? `软件本体安置与恢复演练${verification.ok ? '通过' : '未通过'}；尚未发布配方，也未接入连接器。` : planPreview.kind === 'software-recipe-publish' ? applied.status === 'published-version-only' && verification.ok ? `版本查询已发布，连接器健康检查和单格认证均通过；其它功能尚需适配。` : `配方文件${verification.ok ? '已发布' : '回读失败'}，但软件仍待验证：${applied.check?.issues?.join('；') || '缺少健康检查结果'}。` : `计划已${applied.status === 'already-applied' ? '确认已执行' : '执行'}，验证${verification.ok ? '通过' : '未通过'}。`);
     } catch (error) {
       setMessage(`计划执行失败：${friendlyError(error)}`);
     } finally {
@@ -431,7 +440,7 @@ function App() {
           <HelpPanel />
           <ResourcePanel inventory={inventory} resources={resources} resourceFilter={resourceFilter} setResourceFilter={setResourceFilter} targetVersions={targetVersions} setTargetVersions={setTargetVersions} previewResource={previewResource} />
           <DocumentPanel documentSummaries={documentSummaries} visibleDocuments={visibleDocuments} documentFilter={documentFilter} setDocumentFilter={setDocumentFilter} selectedDocument={selectedDocument} documentDraft={documentDraft} setDocumentDraft={setDocumentDraft} sensitiveConfirmed={sensitiveConfirmed} setSensitiveConfirmed={setSensitiveConfirmed} openDocument={openDocument} previewDocument={previewDocument} />
-          <SoftwarePanel api={api} workspace={workspace} inventory={inventory} software={software} softwareResults={softwareResults} checkSoftware={checkSoftware} previewSoftwareLocation={previewSoftwareLocation} previewSoftware={previewSoftware} previewSoftwareImport={previewSoftwareImport} setMessage={setMessage} />
+          <SoftwarePanel api={api} workspace={workspace} inventory={inventory} software={software} softwareResults={softwareResults} checkSoftware={checkSoftware} previewSoftwareLocation={previewSoftwareLocation} previewSoftware={previewSoftware} previewSoftwareImport={previewSoftwareImport} previewSoftwareRecipe={previewSoftwareRecipe} setMessage={setMessage} />
           <GitPanel gitDetails={gitDetails} workspace={workspace} refreshGit={refreshGit} previewGit={previewGit} sensitiveScan={sensitiveScan} />
         </div>
         <PlanPreview planPreview={planPreview} executePlan={executePlan} closePlan={() => { setPlanPreview(null); setPlanPayload(null); }} planWriteKinds={PLAN_WRITE_KINDS} />

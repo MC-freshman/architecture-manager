@@ -6,7 +6,8 @@ export const PLAN_WRITE_KINDS = [
   'integration-config',
   'integration-pointer',
   'integration-registry',
-  'software-import'
+  'software-import',
+  'software-recipe-publish'
 ];
 
 export function friendlyError(error) {

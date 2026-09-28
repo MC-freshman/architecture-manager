@@ -8,4 +8,5 @@ export { buildIntegrationPlan } from '../integration.mjs';
 export { applyPlan, verifyPlanTarget } from '../transactions.mjs';
 export { runPlatformCheck } from '../platform-check.mjs';
 export { buildSoftwareImportPlan } from '../software-intake.mjs';
+export { buildSoftwareRecipePlan } from '../software-publish.mjs';
 

@@ -4,6 +4,7 @@ import { inspectPlatformDirectory } from './inventory.mjs';
 import { buildIntegrationPlan } from './integration.mjs';
 import { assertPublishedVersion } from './plans.mjs';
 import { applySoftwareImport, verifySoftwareImport } from './software-intake.mjs';
+import { applySoftwareRecipe, verifySoftwareRecipe } from './software-publish.mjs';
 import { resolve } from 'node:path';
 import { defaultAuditRoot, localViewPath, safeRelative, targetPath } from './core/paths.mjs';
 import { sha256 } from './core/hash.mjs';
@@ -17,6 +18,7 @@ export function applyPlan({ plan, afterText = null, actor = 'local-user', auditR
   if (plan.kind === 'registry-edit') return applyRegistry(plan, afterText || plan.payload?.afterText, { actor, auditRoot, now, failAfterCheckpoint });
   if (plan.kind === 'integration-config' || plan.kind === 'integration-pointer' || plan.kind === 'integration-registry') return applyIntegration(plan, afterText || plan.payload?.afterText, { actor, auditRoot, now, failAfterCheckpoint });
   if (plan.kind === 'software-import') return applySoftwareImport({ plan });
+  if (plan.kind === 'software-recipe-publish') return applySoftwareRecipe({ plan });
   throw new Error('TRANSACTION_KIND_UNSUPPORTED');
 }
 
@@ -168,9 +170,15 @@ function applyIntegration(plan, afterText, context) {
   const exists = existsSync(target);
   const before = exists ? readFileSync(target, 'utf8') : '';
   const currentSha = exists ? sha256(before) : null;
+  const companionStep = plan.kind === 'integration-config' ? plan.steps?.[1] : null;
+  if (companionStep && ![`${plan.target.targetId}/bridge/runner-config.json`, `${plan.target.targetId}/bridge/${plan.target.targetId}-config.json`].includes(companionStep.target)) throw new Error('INVALID_TRANSACTION_PLAN');
+  const companion = companionStep ? targetPath(plan.workspaceRoot, safeRelative(companionStep.target)) : null;
+  const companionBefore = companion ? readFileSync(companion, 'utf8') : null;
+  const companionSha = companion ? sha256(companionBefore) : null;
+  if (companion && sha256(plan.payload?.companionAfterText || '') !== companionStep.newSha256) throw new Error('PLAN_PAYLOAD_MISMATCH');
   const id = makeId(plan, context.now);
-  if (currentSha === expectedNew) return output(writeAudit({ ...context, transactionId: id, plan, action: plan.kind, status: 'already-applied', target: targetRelative, oldSha256: expectedOld, newSha256: expectedNew }));
-  if (currentSha !== expectedOld) {
+  if (currentSha === expectedNew && (!companion || companionSha === companionStep.newSha256)) return output(writeAudit({ ...context, transactionId: id, plan, action: plan.kind, status: 'already-applied', target: targetRelative, oldSha256: expectedOld, newSha256: expectedNew }));
+  if (currentSha !== expectedOld || (companion && companionSha !== companionStep.oldSha256)) {
     const event = writeAudit({ ...context, transactionId: id, plan, action: plan.kind, status: 'blocked-external-change', target: targetRelative, oldSha256: expectedOld, newSha256: expectedNew, error: 'EXTERNAL_CHANGE_DETECTED' });
     throw Object.assign(new Error('EXTERNAL_CHANGE_DETECTED'), { audit: event });
   }
@@ -190,10 +198,12 @@ function applyIntegration(plan, afterText, context) {
     if (sha256(afterText) !== expectedNew) throw new Error('PLAN_PAYLOAD_MISMATCH');
     const validated = buildIntegrationPlan({ workspaceRoot: plan.workspaceRoot, kind: plan.target.kind, targetId: plan.target.targetId, mode: plan.target.mode, relativePath: targetRelative, beforeText: before, afterText, baselineSha256: currentSha });
     if (validated.steps[0].newSha256 !== expectedNew) throw new Error('PLAN_PAYLOAD_MISMATCH');
+    if (JSON.stringify(validated.steps[1] || null) !== JSON.stringify(companionStep || null) || (validated.payload?.companionAfterText || null) !== (plan.payload?.companionAfterText || null)) throw new Error('PLAN_PAYLOAD_MISMATCH');
   }
   const parent = resolve(target, '..');
   if (!existsSync(parent) || !statSync(parent).isDirectory()) throw new Error('INTEGRATION_PARENT_NOT_FOUND');
   const saved = saveCheckpoint(context.auditRoot, id, before);
+  const companionSaved = companion ? saveCheckpoint(context.auditRoot, `${id}-runner`, companionBefore) : null;
   if (context.failAfterCheckpoint) {
     const event = writeAudit({ ...context, transactionId: id, plan, action: plan.kind, status: 'interrupted-before-write', target: targetRelative, oldSha256: expectedOld, newSha256: expectedNew, checkpointSha256: saved.sha256, checkpointPath: saved.path, error: 'SIMULATED_INTERRUPT' });
     throw Object.assign(new Error('SIMULATED_INTERRUPT'), { audit: event, checkpointPath: saved.path });
@@ -202,9 +212,14 @@ function applyIntegration(plan, afterText, context) {
     atomicWrite(target, afterText, id);
     const actual = sha256(readFileSync(target, 'utf8'));
     if (actual !== expectedNew) throw new Error('VERIFY_FAILED');
+    if (companion) {
+      atomicWrite(companion, plan.payload.companionAfterText, `${id}-runner`);
+      if (sha256(readFileSync(companion, 'utf8')) !== companionStep.newSha256) throw new Error('VERIFY_FAILED');
+    }
     const event = writeAudit({ ...context, transactionId: id, plan, action: plan.kind, status: 'applied', target: targetRelative, oldSha256: expectedOld, newSha256: expectedNew, checkpointSha256: saved.sha256, checkpointPath: saved.path, writePerformed: true });
     return output(event, saved.path);
   } catch (error) {
+    if (companion && companionSaved && existsSync(companionSaved.path)) atomicWrite(companion, companionBefore, `${id}-runner-restore`);
     if (exists) atomicWrite(target, before, `${id}-restore`);
     else if (existsSync(target)) rmSync(target, { force: true });
     const event = writeAudit({ ...context, transactionId: id, plan, action: plan.kind, status: 'recovered-after-failure', target: targetRelative, oldSha256: expectedOld, newSha256: expectedNew, checkpointSha256: saved.sha256, checkpointPath: saved.path, error: String(error?.message ?? error) });
@@ -215,6 +230,7 @@ function applyIntegration(plan, afterText, context) {
 export function verifyPlanTarget({ plan }) {
   requirePlan(plan);
   if (plan.kind === 'software-import') return verifySoftwareImport({ plan });
+  if (plan.kind === 'software-recipe-publish') return verifySoftwareRecipe({ plan });
   if (plan.kind === 'document-edit') {
     const target = targetPath(plan.workspaceRoot, plan.target.path);
     const content = readFileSync(target, 'utf8');
@@ -236,7 +252,9 @@ export function verifyPlanTarget({ plan }) {
   if (plan.kind === 'registry-edit') {
     const target = targetPath(plan.workspaceRoot, plan.target.path);
     const actual = sha256(readFileSync(target, 'utf8'));
-    return { schema: 'architecture-manager-verification/v1', ok: actual === plan.steps[0].newSha256, target: plan.target.path, actualSha256: actual, expectedSha256: plan.steps[0].newSha256, writePerformed: false };
+    const companionStep = plan.steps?.[1];
+    const companionSha = companionStep ? sha256(readFileSync(targetPath(plan.workspaceRoot, companionStep.target), 'utf8')) : null;
+    return { schema: 'architecture-manager-verification/v1', ok: actual === plan.steps[0].newSha256 && (!companionStep || companionSha === companionStep.newSha256), target: plan.target.path, actualSha256: actual, expectedSha256: plan.steps[0].newSha256, companionSha256: companionSha, writePerformed: false };
   }
   if (plan.kind === 'integration-config' || plan.kind === 'integration-registry' || plan.kind === 'integration-pointer') {
     const target = targetPath(plan.workspaceRoot, plan.target.path);

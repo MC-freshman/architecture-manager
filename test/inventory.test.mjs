@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { assertWithinRoot, FORMAL_TOP_LEVEL_DIRECTORIES, inspectPlatformDirectory, scanWorkspace } from '../src/inventory.mjs';
 import { buildPlatformViewPlan, buildResourcePointerPlan } from '../src/plans.mjs';
@@ -15,6 +17,7 @@ import { buildIntegrationPlan, listIntegrationTargets, readIntegrationTarget, su
 import { inspectPlatformConnection, runPlatformCheck } from '../src/platform-check.mjs';
 import { latestStableVersion } from '../src/core/versions.mjs';
 import { buildSoftwareImportPlan } from '../src/software-intake.mjs';
+import { applySoftwareRecipe, buildSoftwareRecipePlan, listSoftwareIntakes, verifySoftwareRecipe } from '../src/software-publish.mjs';
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'architecture-manager-'));
@@ -248,6 +251,36 @@ test('software import refuses changed source bytes before any copy', () => {
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test('publishes only a probed CLI version capability and binds its platform connector', () => {
+  const root = fixture();
+  const source = join(root, 'my-tool.exe');
+  writeFileSync(source, 'test-only-executable-bytes');
+  writeFileSync(join(root, 'software', 'registry.json'), JSON.stringify({ schema: 'ai-software-registry/v1', version: 1, software: [] }));
+  writeFileSync(join(root, 'codex', 'bridge', 'software-gateway-config.json'), JSON.stringify({ softwareRoot: join(root, 'software'), bodies: {} }));
+  writeFileSync(join(root, 'codex', 'bridge', 'runner-config.json'), JSON.stringify({ platform: 'codex', softwareGateway: join(root, 'software', '_connector', 'versions', '1.0.7', 'connector.py'), softwareGatewayConfig: join(root, 'codex', 'bridge', 'software-gateway-config.json') }));
+  const probeVersion = () => 'my-tool 1.2.3';
+  try {
+    applyPlan({ plan: buildSoftwareImportPlan({ workspaceRoot: root, platformId: 'codex', softwareId: 'my-tool', sourcePath: source, intakeKind: 'portable-file', now: '2026-09-28T12:00:00.000Z' }) });
+    assert.equal(listSoftwareIntakes({ workspaceRoot: root, platformId: 'codex' })[0].restored, true);
+    const plan = buildSoftwareRecipePlan({ workspaceRoot: root, platformId: 'codex', softwareId: 'my-tool', bodyName: 'my-tool.exe', displayName: 'My Tool', upstreamVersion: '1.2.3', license: 'unknown', now: '2026-09-28T12:30:00.000Z' }, { probeVersion });
+    assert.equal(plan.writePerformed, false);
+    assert.equal(existsSync(join(root, 'software', 'my-tool')), false);
+    const applied = applySoftwareRecipe({ plan }, { probeVersion, verifyPublished: () => ({ connectorDispatchable: true, singleCellReached: true, issues: [] }) });
+    assert.equal(applied.status, 'published-version-only');
+    assert.equal(applied.check.singleCellReached, true);
+    assert.equal(verifySoftwareRecipe({ plan }).ok, true);
+    assert.equal(JSON.parse(readFileSync(join(root, 'software', 'my-tool', 'versions', '1.0.0', 'capabilities.snapshot.json'), 'utf8')).frozen, true);
+    assert.equal(JSON.parse(readFileSync(join(root, 'software', 'my-tool', 'current.json'), 'utf8')).version, '1.0.0');
+    const checker = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'tool', 'repo-lint', 'versions', '0.6.3', 'scripts');
+    if (existsSync(checker)) {
+      const script = 'import sys,json;sys.path.insert(0,sys.argv[1]);from software_lint import lint_software_root;print(json.dumps(lint_software_root(sys.argv[2],new_release=True)["findings"]))';
+      const check = spawnSync('python', ['-B', '-c', script, checker, join(root, 'software')], { encoding: 'utf8', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } });
+      assert.equal(check.status, 0, check.stderr);
+      assert.deepEqual(JSON.parse(check.stdout), []);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('creates guarded Git plans without applying them', () => {
   const commit = buildGitPlan({ workspaceRoot: 'C:/workspace', action: 'commit', message: 'update manager', now: '2026-09-25T00:00:00.000Z' });
   assert.equal(commit.kind, 'git-commit');
@@ -394,6 +427,26 @@ test('plans and applies GUI integration for platform config and shared resource 
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('migrates a legacy bridge and its runner reference together without deleting the old file', () => {
+  const root = fixture();
+  const runner = join(root, 'codex', 'bridge', 'runner-config.json');
+  const oldBridge = join(root, 'codex', 'bridge', 'bridge.json');
+  const newBridge = join(root, 'codex', 'bridge.json');
+  writeFileSync(runner, `${JSON.stringify({ platform: 'codex', bridge: oldBridge }, null, 2)}\n`);
+  try {
+    const suggestion = suggestPlatformBridge({ workspaceRoot: root, platformId: 'codex' });
+    const plan = buildIntegrationPlan({ workspaceRoot: root, kind: 'platform', targetId: 'codex', afterText: suggestion.afterText });
+    assert.equal(plan.steps.length, 2);
+    assert.equal(JSON.parse(readFileSync(runner, 'utf8')).bridge, oldBridge);
+    const applied = applyPlan({ plan, auditRoot: join(root, 'audit') });
+    assert.equal(applied.status, 'applied');
+    assert.equal(JSON.parse(readFileSync(runner, 'utf8')).bridge, newBridge);
+    assert.equal(readFileSync(newBridge, 'utf8'), readFileSync(oldBridge, 'utf8'));
+    assert.equal(verifyPlanTarget({ plan }).ok, true);
+    assert.equal(applyPlan({ plan, auditRoot: join(root, 'audit') }).status, 'already-applied');
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test('generates a no-code root bridge for an existing platform directory without configuration', () => {

@@ -12,12 +12,14 @@ import {
   buildResourcePointerPlan,
   buildSoftwareLaunchPlan,
   buildSoftwareImportPlan,
+  buildSoftwareRecipePlan,
   healthSoftware,
   inspectGit,
   inspectPlatformDirectory,
   inspectPlatformConnection,
   inspectRegistration,
   listIntegrationTargets,
+  listSoftwareIntakes,
   readCatalogEntry,
   readDocument,
   readIntegrationTarget,
@@ -67,6 +69,8 @@ function registerReadOnlyIpc() {
   ipcMain.handle('software:health', (_event, input) => healthSoftware(input.workspaceRoot, input.softwareId));
   ipcMain.handle('plan:software', (_event, input) => buildSoftwareLaunchPlan(input));
   ipcMain.handle('plan:software-import', (_event, input) => buildSoftwareImportPlan(input));
+  ipcMain.handle('software:intakes', (_event, input) => listSoftwareIntakes(input));
+  ipcMain.handle('plan:software-recipe', (_event, input) => buildSoftwareRecipePlan(input));
   ipcMain.handle('software:select-source', async (_event, kind) => {
     const result = await dialog.showOpenDialog({ title: kind === 'unpacked-directory' ? '选择已解压的软件目录' : '选择下载的软件文件', properties: [kind === 'unpacked-directory' ? 'openDirectory' : 'openFile'] });
     return result.canceled ? null : result.filePaths[0] ?? null;
