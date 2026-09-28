@@ -7,7 +7,7 @@
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 1024px; }
+body { margin: 0; min-width: 0; }
 button { font: inherit; }
 .app-shell { min-height: 100vh; }
 .topbar { display: flex; justify-content: space-between; align-items: center; padding: 34px 56px 28px; background: linear-gradient(135deg, #102a43, #1e4e67); color: #fff; }
@@ -28,7 +28,7 @@ code { color: #24495b; overflow: hidden; text-overflow: ellipsis; white-space: n
 .stat-card { padding: 20px; }
 .stat-label { color: #637983; font-size: 13px; }
 .stat-value { margin: 9px 0 4px; font-size: 28px; font-weight: 650; }
-.panel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px; }
+.panel-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 18px; }
 .panel { padding: 20px; }
 .panel-title { display: flex; justify-content: space-between; padding-bottom: 14px; border-bottom: 1px solid #e8eef1; font-weight: 650; }
 .panel-tools { display: flex; align-items: center; gap: 8px; }
@@ -40,6 +40,12 @@ code { color: #24495b; overflow: hidden; text-overflow: ellipsis; white-space: n
 .row:last-child { border-bottom: 0; }
 .row-name { font-weight: 600; }
 .platform-main { min-width: 0; flex: 1; }
+.platform-panel .panel-title, .platform-panel .panel-tools { flex-wrap: wrap; gap: 8px; }
+.platform-panel .row { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; }
+.platform-panel .platform-main { width: 100%; min-width: 0; }
+.platform-panel .resource-actions { min-width: 0; margin-top: 12px; flex-wrap: wrap; justify-content: flex-start; }
+.platform-panel .resource-actions .small-button { flex: 0 0 auto; white-space: nowrap; }
+.platform-panel .resource-actions .pill { max-width: 100%; overflow-wrap: anywhere; }
 .path-line { margin-top: 5px; color: #6b7d88; font: 11px Consolas, monospace; overflow-wrap: anywhere; }
 .marker-list { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 7px; }
 .marker { border-radius: 999px; padding: 2px 7px; font-size: 11px; background: #f2f5f6; }
