@@ -8,7 +8,11 @@ import { friendlyError, PLAN_WRITE_KINDS } from '../src/renderer/presenter.mjs';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 test('renderer domains stay split and write kinds remain centralized', () => {
-  const source = readFileSync(join(root, 'src', 'renderer', 'components.jsx'), 'utf8');
+  const source = [
+    'stats.jsx', 'platform.jsx', 'integration.jsx', 'catalog.jsx',
+    'resources.jsx', 'documents.jsx', 'software.jsx', 'git.jsx',
+    'safety.jsx', 'plan-preview.jsx'
+  ].map((file) => readFileSync(join(root, 'src', 'renderer', 'panels', file), 'utf8')).join('\n');
   const domains = [
     'DashboardStats', 'PlatformPanel', 'IntegrationPanel', 'CatalogPanel',
     'ResourcePanel', 'DocumentPanel', 'SoftwarePanel', 'GitPanel',
