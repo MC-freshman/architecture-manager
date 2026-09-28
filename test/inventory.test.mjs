@@ -13,6 +13,7 @@ import { backupAndRestoreFixture, buildGitPlan, scanSensitiveFiles } from '../sr
 import { applyPlan, verifyPlanTarget } from '../src/transactions.mjs';
 import { buildIntegrationPlan, listIntegrationTargets, readIntegrationTarget, suggestPlatformBridge } from '../src/integration.mjs';
 import { inspectPlatformConnection, runPlatformCheck } from '../src/platform-check.mjs';
+import { latestStableVersion } from '../src/core/versions.mjs';
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'architecture-manager-'));
@@ -26,6 +27,8 @@ function fixture() {
   writeFileSync(join(root, 'software', 'demo', 'current.json'), JSON.stringify({ id: 'demo-software', version: '1.0.0' }));
   mkdirSync(join(root, 'software', 'demo', 'versions', '1.1.0'), { recursive: true });
   writeFileSync(join(root, 'software', 'demo', 'versions', '1.1.0', 'SHA256SUMS'), 'demo\n');
+  mkdirSync(join(root, 'tool', 'demo', 'versions', '1.1.0'), { recursive: true });
+  writeFileSync(join(root, 'tool', 'demo', 'versions', '1.1.0', 'SHA256SUMS'), 'demo\n');
   writeFileSync(join(root, 'codex', 'bridge', 'bridge.json'), JSON.stringify({ schema: 'ai-platform-bridge/v1', platform: 'codex', shared: { agentRegistry: join(root, 'agent', 'registry.json'), toolRegistry: join(root, 'tool', 'registry.json'), architecturePrompt: join(root, 'AI_ARCHITECTURE_SYSTEM_PROMPT.md'), readOnly: true }, runtimeRoot: join(root, 'codex', 'runtime'), modes: ['workflow'] }, null, 2));
   writeFileSync(join(root, 'versions', 'architecture.md'), '# test');
   return root;
@@ -45,6 +48,18 @@ test('scans a workspace without writing', () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('suggests the newest stable release without silently changing current', () => {
+  assert.equal(latestStableVersion(['1.9.0', '1.10.0', '2.0.0-beta.1', '1.8.9']), '1.10.0');
+  const root = fixture();
+  try {
+    const before = readFileSync(join(root, 'tool', 'demo', 'current.json'), 'utf8');
+    const pointer = scanWorkspace(root).sharedRepositories.find((repo) => repo.repository === 'tool').pointers[0];
+    assert.equal(pointer.latestStableVersion, '1.1.0');
+    assert.equal(pointer.version, '1.0.0');
+    assert.equal(readFileSync(join(root, 'tool', 'demo', 'current.json'), 'utf8'), before);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test('shows the update log first with the same document kind in scan and read views', () => {

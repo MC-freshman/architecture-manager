@@ -257,8 +257,8 @@ function App() {
     }
   };
 
-  const previewResource = async (resource) => {
-    const target = targetVersions[`${resource.repository}/${resource.resourceId}`];
+  const previewResource = async (resource, selectedVersion = null) => {
+    const target = selectedVersion || targetVersions[`${resource.repository}/${resource.resourceId}`] || (resource.latestStableVersion !== resource.version ? resource.latestStableVersion : null);
     if (!target) return;
     try {
       const plan = await api.previewResourcePlan({

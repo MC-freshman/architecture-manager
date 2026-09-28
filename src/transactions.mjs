@@ -2,6 +2,7 @@ import { existsSync, readFileSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import { buildRegistryPlan } from './catalog.mjs';
 import { inspectPlatformDirectory } from './inventory.mjs';
 import { buildIntegrationPlan } from './integration.mjs';
+import { assertPublishedVersion } from './plans.mjs';
 import { resolve } from 'node:path';
 import { defaultAuditRoot, localViewPath, safeRelative, targetPath } from './core/paths.mjs';
 import { sha256 } from './core/hash.mjs';
@@ -125,6 +126,7 @@ function applyPointer(plan, context) {
   const currentVersion = parsed?.version;
   const expectedOld = plan.target?.currentVersion;
   const expectedNew = plan.target?.targetVersion;
+  assertPublishedVersion(plan.workspaceRoot, plan.target?.repository, plan.target?.resourceId, expectedNew);
   const id = makeId(plan, context.now);
   if (currentVersion === expectedNew) {
     const event = writeAudit({ ...context, transactionId: id, plan, action: 'resource-pointer', status: 'already-applied', target: targetRelative, oldSha256: step.oldSha256 });

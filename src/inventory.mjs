@@ -5,6 +5,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { listSoftware } from './software.mjs';
 import { inspectPlatformConnection } from './platform-check.mjs';
+import { latestStableVersion } from './core/versions.mjs';
 import { inspectGit } from './git.mjs';
 import { documentKind, EXTRA_DOCUMENTS, UPDATE_LOG_PATH } from './documents.mjs';
 
@@ -108,7 +109,7 @@ function listReleasePointers(root, repository) {
           .map((versionEntry) => versionEntry.name)
           .sort()
       : [];
-    pointers.push({ ...pointer, resourceId: entry.name, availableVersions });
+    pointers.push({ ...pointer, resourceId: entry.name, availableVersions, latestStableVersion: latestStableVersion(availableVersions) });
   }
   return { repository, exists: true, pointers, errors };
 }

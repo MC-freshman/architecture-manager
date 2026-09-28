@@ -2,6 +2,13 @@ const REPOSITORIES = new Set(['tool', 'agent', 'software']);
 const RESOURCE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
+export function assertPublishedVersion(workspaceRoot, repository, resourceId, version) {
+  if (!REPOSITORIES.has(repository) || !RESOURCE_ID.test(resourceId) || !SEMVER.test(version)) throw new Error('INVALID_RESOURCE_VERSION');
+  const release = join(workspaceRoot, repository, resourceId, 'versions', version);
+  const sums = join(release, 'SHA256SUMS');
+  if (!existsSync(release) || !statSync(release).isDirectory() || !existsSync(sums) || !statSync(sums).isFile()) throw new Error('TARGET_VERSION_NOT_FROZEN');
+}
+
 function basePlan(kind, workspaceRoot, now) {
   return {
     schema: 'architecture-manager-plan/v1',
@@ -40,6 +47,7 @@ export function buildResourcePointerPlan({ workspaceRoot, repository, resourceId
   if (typeof targetVersion !== 'string' || !SEMVER.test(targetVersion)) throw new Error('INVALID_TARGET_VERSION');
   if (currentVersion === targetVersion) throw new Error('NO_CHANGE');
   if (!Array.isArray(availableVersions) || !availableVersions.includes(targetVersion)) throw new Error('TARGET_VERSION_UNAVAILABLE');
+  assertPublishedVersion(workspaceRoot, repository, resourceId, targetVersion);
   const plan = basePlan('resource-pointer', workspaceRoot, now);
   plan.target = { repository, resourceId, currentVersion, targetVersion, baselineSha256 };
   plan.steps.push({
@@ -54,3 +62,6 @@ export function buildResourcePointerPlan({ workspaceRoot, repository, resourceId
   plan.verification.push('target version directory and SHA256SUMS pass after apply');
   return plan;
 }
+import { existsSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+
