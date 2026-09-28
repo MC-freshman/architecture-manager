@@ -2,14 +2,28 @@ import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron';
 import { existsSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { inspectPlatformDirectory, scanWorkspace } from './inventory.mjs';
-import { buildRegistryPlan, inspectRegistration, readCatalogEntry, readSkillContent } from './catalog.mjs';
-import { buildPlatformViewPlan, buildResourcePointerPlan } from './plans.mjs';
-import { buildDocumentPlan, readDocument } from './documents.mjs';
-import { buildSoftwareLaunchPlan, healthSoftware } from './software.mjs';
-import { buildGitPlan, inspectGit, scanSensitiveFiles } from './git.mjs';
-import { buildIntegrationPlan, listIntegrationTargets, readIntegrationTarget } from './integration.mjs';
-import { applyPlan, verifyPlanTarget } from './transactions.mjs';
+import {
+  applyPlan,
+  buildDocumentPlan,
+  buildGitPlan,
+  buildIntegrationPlan,
+  buildPlatformViewPlan,
+  buildRegistryPlan,
+  buildResourcePointerPlan,
+  buildSoftwareLaunchPlan,
+  healthSoftware,
+  inspectGit,
+  inspectPlatformDirectory,
+  inspectRegistration,
+  listIntegrationTargets,
+  readCatalogEntry,
+  readDocument,
+  readIntegrationTarget,
+  readSkillContent,
+  scanSensitiveFiles,
+  scanWorkspace,
+  verifyPlanTarget
+} from './app/api.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const defaultWorkspace = process.env.ARCHITECTURE_MANAGER_WORKSPACE || null;

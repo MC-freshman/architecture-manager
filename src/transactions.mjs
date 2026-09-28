@@ -1,98 +1,11 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import { buildRegistryPlan } from './catalog.mjs';
 import { inspectPlatformDirectory } from './inventory.mjs';
 import { buildIntegrationPlan } from './integration.mjs';
-import { createHash, randomUUID } from 'node:crypto';
-import { join, normalize, relative, resolve, sep } from 'node:path';
-import { homedir, tmpdir } from 'node:os';
-
-function sha256(value) {
-  return createHash('sha256').update(value, 'utf8').digest('hex');
-}
-
-function safeRelative(value) {
-  if (typeof value !== 'string' || value.trim() === '') throw new Error('INVALID_TRANSACTION_TARGET');
-  const normalized = normalize(value).split(sep).join('/');
-  if (normalized.startsWith('../') || normalized === '..' || normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized)) throw new Error('TRANSACTION_TARGET_OUTSIDE_WORKSPACE');
-  return normalized;
-}
-
-function targetPath(workspaceRoot, relativePath) {
-  const root = realpathSync(workspaceRoot);
-  const lexical = resolve(root, safeRelative(relativePath));
-  const target = existsSync(lexical) ? realpathSync(lexical) : lexical;
-  const rel = relative(root, target);
-  if (rel.startsWith(`..${sep}`) || rel === '..' || /^[A-Za-z]:/i.test(rel)) throw new Error('TRANSACTION_TARGET_OUTSIDE_WORKSPACE');
-  return target;
-}
-
-function defaultAuditRoot() {
-  return join(process.env.LOCALAPPDATA || tmpdir(), 'ArchitectureManager', 'audit');
-}
-
-function localViewPath(workspaceRoot) {
-  const key = sha256(realpathSync(workspaceRoot)).slice(0, 24);
-  const base = process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local');
-  return join(base, 'ArchitectureManager', 'views', `${key}.json`);
-}
-
-function auditPath(auditRoot) {
-  mkdirSync(auditRoot, { recursive: true });
-  return join(auditRoot, 'events.jsonl');
-}
-
-function makeId(plan, now) {
-  return `${plan.planId}-${now.replace(/[^0-9]/g, '').slice(0, 17)}-${randomUUID().slice(0, 8)}`;
-}
-
-function writeAudit({ auditRoot, transactionId, plan, actor, action, status, target, oldSha256 = null, newSha256 = null, checkpointSha256 = null, checkpointPath = null, writePerformed = false, error = null, now }) {
-  const event = {
-    schema: 'architecture-manager-audit/v1',
-    transactionId,
-    planId: plan.planId,
-    action,
-    status,
-    actor,
-    workspaceRoot: plan.workspaceRoot,
-    target,
-    oldSha256,
-    newSha256,
-    checkpointSha256,
-    checkpointPath,
-    writePerformed,
-    error,
-    occurredAt: now
-  };
-  appendFileSync(auditPath(auditRoot), `${JSON.stringify(event)}\n`, 'utf8');
-  return event;
-}
-
-function saveCheckpoint(auditRoot, transactionId, content) {
-  const directory = join(auditRoot, 'checkpoints');
-  mkdirSync(directory, { recursive: true });
-  const path = join(directory, `${transactionId}.before`);
-  writeFileSync(path, content, 'utf8');
-  return { path, sha256: sha256(content) };
-}
-
-function atomicWrite(target, content, transactionId) {
-  const temporary = `${target}.architecture-manager-${transactionId}.tmp`;
-  try {
-    writeFileSync(temporary, content, 'utf8');
-    renameSync(temporary, target);
-  } finally {
-    if (existsSync(temporary)) rmSync(temporary, { force: true });
-  }
-}
-
-function requirePlan(plan) {
-  if (!plan || plan.schema !== 'architecture-manager-plan/v1' || plan.writePerformed !== false) throw new Error('INVALID_TRANSACTION_PLAN');
-  if (plan.applyMode !== 'confirmation-required') throw new Error('TRANSACTION_CONFIRMATION_REQUIRED');
-}
-
-function output(event, checkpointPath = null) {
-  return { schema: 'architecture-manager-transaction/v1', ...event, checkpointPath };
-}
+import { resolve } from 'node:path';
+import { defaultAuditRoot, localViewPath, safeRelative, targetPath } from './core/paths.mjs';
+import { sha256 } from './core/hash.mjs';
+import { atomicWrite, makeId, output, requirePlan, saveCheckpoint, writeAudit } from './transactions/kernel.mjs';
 
 export function applyPlan({ plan, afterText = null, actor = 'local-user', auditRoot = defaultAuditRoot(), now = new Date().toISOString(), failAfterCheckpoint = false }) {
   requirePlan(plan);

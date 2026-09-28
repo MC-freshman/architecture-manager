@@ -31,6 +31,10 @@
 
 ## 开发和验证
 
+### 源码模块边界（0.1.1）
+
+源码按依赖方向分层：`renderer/` 只负责界面，`app/api.mjs` 是 IPC 使用的应用层门面，领域扫描与计划模块负责业务规则，`transactions.mjs` 只暴露稳定事务 API；事务公共内核位于 `transactions/kernel.mjs`，无副作用的哈希与路径校验位于 `core/`。`core/` 和事务内核不依赖 Electron 或 renderer。后续模块替换先在门面与边界测试中验证，避免改动一处扩散到所有 IPC 注册。
+
 ```text
 npm install
 npm test
