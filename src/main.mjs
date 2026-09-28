@@ -22,6 +22,7 @@ import {
   readSkillContent,
   scanSensitiveFiles,
   scanWorkspace,
+  suggestPlatformBridge,
   verifyPlanTarget
 } from './app/api.mjs';
 
@@ -73,6 +74,7 @@ function registerReadOnlyIpc() {
   ipcMain.handle('plan:git', (_event, input) => buildGitPlan(input));
   ipcMain.handle('integration:targets', (_event, input) => listIntegrationTargets(input));
   ipcMain.handle('integration:read', (_event, input) => readIntegrationTarget(input));
+  ipcMain.handle('platform:suggest-bridge', (_event, input) => suggestPlatformBridge(input));
   ipcMain.handle('plan:integration', (_event, input) => buildIntegrationPlan(input));
   ipcMain.handle('transaction:apply', (_event, input) => applyPlan(input));
   ipcMain.handle('transaction:verify', (_event, input) => verifyPlanTarget(input));

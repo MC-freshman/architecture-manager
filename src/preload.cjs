@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('architectureManager', Object.freeze({
   previewGitPlan: (input) => ipcRenderer.invoke('plan:git', input),
   listIntegrationTargets: (input) => ipcRenderer.invoke('integration:targets', input),
   readIntegrationTarget: (input) => ipcRenderer.invoke('integration:read', input),
+  suggestPlatformBridge: (input) => ipcRenderer.invoke('platform:suggest-bridge', input),
   previewIntegrationPlan: (input) => ipcRenderer.invoke('plan:integration', input),
   applyPlan: (input) => ipcRenderer.invoke('transaction:apply', input),
   verifyPlan: (input) => ipcRenderer.invoke('transaction:verify', input)

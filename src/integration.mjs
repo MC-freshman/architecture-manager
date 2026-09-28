@@ -147,6 +147,42 @@ export function readIntegrationTarget({ workspaceRoot, kind, targetId, relativeP
   return { schema: 'architecture-manager-integration-target/v1', kind, targetId, path, ...data, parsed, migrationSource, writePerformed: false };
 }
 
+export function suggestPlatformBridge({ workspaceRoot, platformId }) {
+  const root = rootPath(workspaceRoot);
+  const paths = platformCandidates(root, platformId);
+  if (!paths.length) throw new Error('PLATFORM_DIRECTORY_NOT_FOUND');
+  const canonical = readText(root, paths[0]);
+  const legacy = readText(root, `${platformId}/bridge/bridge.json`);
+  if (canonical.exists && legacy.exists && canonical.content !== legacy.content) throw new Error('PLATFORM_BRIDGE_CONFLICT');
+  if (canonical.exists) return { platformId, path: paths[0], source: 'canonical', afterText: canonical.content, nextStep: 'verify', writePerformed: false };
+  if (legacy.exists) {
+    const parsed = parseJson(legacy.content);
+    if (parsed.platform !== platformId) throw new Error('PLATFORM_ID_MISMATCH');
+    return { platformId, path: paths[0], source: 'legacy', afterText: legacy.content, nextStep: 'review-migration', writePerformed: false };
+  }
+  const configCandidates = [`${platformId}/bridge/runner-config.json`, `${platformId}/bridge/${platformId}-config.json`];
+  const configPath = configCandidates.find((candidate) => existsSync(pathFor(root, candidate)));
+  const draft = {
+    schema: 'ai-platform-bridge/v1',
+    platform: platformId,
+    shared: {
+      agentRegistry: join(root, 'agent', 'registry.json'),
+      toolRegistry: join(root, 'tool', 'registry.json'),
+      architecturePrompt: join(root, 'AI_ARCHITECTURE_SYSTEM_PROMPT.md'),
+      readOnly: true
+    },
+    runtimeRoot: join(root, platformId, 'runtime'),
+    modes: ['workflow', 'agent-workflow']
+  };
+  if (configPath) {
+    const config = parseJson(readText(root, configPath).content);
+    if (config.platform !== platformId) throw new Error('PLATFORM_CONFIG_ID_MISMATCH');
+    const version = typeof config.runner === 'string' ? config.runner.replaceAll('\\', '/').match(/\/versions\/(\d+\.\d+\.\d+)/)?.[1] : null;
+    draft.runner = { enabled: true, ...(version ? { version } : {}), config: pathFor(root, configPath) };
+  }
+  return { platformId, path: paths[0], source: 'generated', afterText: `${JSON.stringify(draft, null, 2)}\n`, nextStep: configPath ? 'verify' : 'adapter-required', writePerformed: false };
+}
+
 export function buildIntegrationPlan({ workspaceRoot, kind, targetId, mode = 'config', relativePath = null, beforeText = null, afterText = null, baselineSha256 = null, currentVersion = null, targetVersion = null, availableVersions = [], now = new Date().toISOString() }) {
   const root = rootPath(workspaceRoot);
   if (kind === 'platform') {
@@ -158,7 +194,8 @@ export function buildIntegrationPlan({ workspaceRoot, kind, targetId, mode = 'co
     const before = beforeText ?? current.content;
     if (current.sha256 !== (baselineSha256 ?? current.sha256) || current.content !== before) throw new Error('INTEGRATION_BASELINE_MISMATCH');
     const next = parseJson(afterText);
-    if (next.platform && next.platform !== targetId) throw new Error('PLATFORM_ID_MISMATCH');
+    if (next.platform !== targetId) throw new Error('PLATFORM_ID_MISMATCH');
+    if (next.schema !== 'ai-platform-bridge/v1' || !next.shared || next.shared.readOnly !== true || typeof next.shared.agentRegistry !== 'string' || typeof next.shared.toolRegistry !== 'string' || typeof next.shared.architecturePrompt !== 'string' || typeof next.runtimeRoot !== 'string' || !Array.isArray(next.modes)) throw new Error('PLATFORM_BRIDGE_INCOMPLETE');
     if (before === afterText) throw new Error('NO_INTEGRATION_CHANGE');
     const plan = basePlan('config', root, now);
     plan.target = { kind, targetId, mode, path };

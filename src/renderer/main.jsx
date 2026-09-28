@@ -47,6 +47,7 @@ function App() {
   const [integrationTarget, setIntegrationTarget] = useState(null);
   const [integrationText, setIntegrationText] = useState('');
   const [integrationTargetVersion, setIntegrationTargetVersion] = useState('');
+  const [platformSuggestion, setPlatformSuggestion] = useState(null);
 
   const scan = async (root) => {
     if (!root) return;
@@ -126,7 +127,15 @@ function App() {
           const detail = await api.readIntegrationTarget({ workspaceRoot: workspace, kind: integrationKind, targetId: integrationTargetId, relativePath: preferred });
           if (cancelled) return;
           setIntegrationTarget(detail);
-          setIntegrationText(detail.content || '');
+          if (integrationKind === 'platform') {
+            const suggested = await api.suggestPlatformBridge({ workspaceRoot: workspace, platformId: integrationTargetId });
+            if (cancelled) return;
+            setPlatformSuggestion(suggested);
+            setIntegrationText(suggested.afterText);
+          } else {
+            setPlatformSuggestion(null);
+            setIntegrationText(detail.content || '');
+          }
           if (integrationMode === 'pointer') setIntegrationTargetVersion('');
         }
       } catch (error) {
@@ -140,7 +149,11 @@ function App() {
     if (!workspace || !integrationTargetId || !integrationPath) return;
     try {
       const detail = await api.readIntegrationTarget({ workspaceRoot: workspace, kind: integrationKind, targetId: integrationTargetId, relativePath: integrationPath });
-      setIntegrationTarget(detail); setIntegrationText(detail.content || '');
+      setIntegrationTarget(detail);
+      if (integrationKind === 'platform') {
+        const suggested = await api.suggestPlatformBridge({ workspaceRoot: workspace, platformId: integrationTargetId });
+        setPlatformSuggestion(suggested); setIntegrationText(suggested.afterText);
+      } else setIntegrationText(detail.content || '');
       setMessage(`已重新读取 ${detail.path}，基线哈希已更新。`);
     } catch (error) { setMessage(`接入目标读取失败：${friendlyError(error)}`); }
   };
@@ -389,7 +402,7 @@ function App() {
 
         <div className="panel-grid">
           <PlatformPanel inventory={inventory} showExcluded={showExcluded} setShowExcluded={setShowExcluded} addPlatformDirectory={addPlatformDirectory} previewPlatform={previewPlatform} />
-          <IntegrationPanel api={api} workspace={workspace} resources={resources} integrationKind={integrationKind} setIntegrationKind={setIntegrationKind} integrationOptions={integrationOptions} integrationTargetId={integrationTargetId} setIntegrationTargetId={setIntegrationTargetId} integrationMode={integrationMode} setIntegrationMode={setIntegrationMode} integrationPaths={integrationPaths} integrationPath={integrationPath} setIntegrationPath={setIntegrationPath} integrationTarget={integrationTarget} setIntegrationTarget={setIntegrationTarget} integrationText={integrationText} setIntegrationText={setIntegrationText} integrationTargetVersion={integrationTargetVersion} setIntegrationTargetVersion={setIntegrationTargetVersion} reloadIntegrationTarget={reloadIntegrationTarget} previewIntegration={previewIntegration} friendlyError={friendlyError} setMessage={setMessage} />
+          <IntegrationPanel api={api} workspace={workspace} resources={resources} integrationKind={integrationKind} setIntegrationKind={setIntegrationKind} integrationOptions={integrationOptions} integrationTargetId={integrationTargetId} setIntegrationTargetId={setIntegrationTargetId} integrationMode={integrationMode} setIntegrationMode={setIntegrationMode} integrationPaths={integrationPaths} integrationPath={integrationPath} setIntegrationPath={setIntegrationPath} integrationTarget={integrationTarget} setIntegrationTarget={setIntegrationTarget} integrationText={integrationText} setIntegrationText={setIntegrationText} integrationTargetVersion={integrationTargetVersion} setIntegrationTargetVersion={setIntegrationTargetVersion} platformSuggestion={platformSuggestion} reloadIntegrationTarget={reloadIntegrationTarget} previewIntegration={previewIntegration} friendlyError={friendlyError} setMessage={setMessage} />
           <CatalogPanel api={api} workspace={workspace} inventory={inventory} catalogFilter={catalogFilter} setCatalogFilter={setCatalogFilter} agents={agents} skills={skills} skillFilter={skillFilter} setSkillFilter={setSkillFilter} catalogDetail={catalogDetail} setCatalogDetail={setCatalogDetail} skillDetail={skillDetail} setSkillDetail={setSkillDetail} openCatalog={openCatalog} previewRegistryAction={previewRegistryAction} friendlyError={friendlyError} setMessage={setMessage} />
           <SafetyPanel />
           <HelpPanel />

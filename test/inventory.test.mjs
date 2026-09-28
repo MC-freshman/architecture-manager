@@ -11,7 +11,7 @@ import { buildDocumentPlan, readDocument } from '../src/documents.mjs';
 import { buildSoftwareLaunchPlan, listSoftware } from '../src/software.mjs';
 import { backupAndRestoreFixture, buildGitPlan, scanSensitiveFiles } from '../src/git.mjs';
 import { applyPlan, verifyPlanTarget } from '../src/transactions.mjs';
-import { buildIntegrationPlan, listIntegrationTargets, readIntegrationTarget } from '../src/integration.mjs';
+import { buildIntegrationPlan, listIntegrationTargets, readIntegrationTarget, suggestPlatformBridge } from '../src/integration.mjs';
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'architecture-manager-'));
@@ -25,7 +25,7 @@ function fixture() {
   writeFileSync(join(root, 'software', 'demo', 'current.json'), JSON.stringify({ id: 'demo-software', version: '1.0.0' }));
   mkdirSync(join(root, 'software', 'demo', 'versions', '1.1.0'), { recursive: true });
   writeFileSync(join(root, 'software', 'demo', 'versions', '1.1.0', 'SHA256SUMS'), 'demo\n');
-  writeFileSync(join(root, 'codex', 'bridge', 'bridge.json'), '{}');
+  writeFileSync(join(root, 'codex', 'bridge', 'bridge.json'), JSON.stringify({ schema: 'ai-platform-bridge/v1', platform: 'codex', shared: { agentRegistry: join(root, 'agent', 'registry.json'), toolRegistry: join(root, 'tool', 'registry.json'), architecturePrompt: join(root, 'AI_ARCHITECTURE_SYSTEM_PROMPT.md'), readOnly: true }, runtimeRoot: join(root, 'codex', 'runtime'), modes: ['workflow'] }, null, 2));
   writeFileSync(join(root, 'versions', 'architecture.md'), '# test');
   return root;
 }
@@ -324,7 +324,7 @@ test('plans and applies GUI integration for platform config and shared resource 
       mode: 'config',
       relativePath: platform.path,
       beforeText: platform.content,
-      afterText: '{"platform":"codex","bridgeVersion":"1.0.0"}\n',
+      afterText: suggestPlatformBridge({ workspaceRoot: root, platformId: 'codex' }).afterText,
       baselineSha256: platform.sha256
     });
     assert.equal(platformPlan.kind, 'integration-config');
@@ -346,6 +346,23 @@ test('plans and applies GUI integration for platform config and shared resource 
     assert.equal(applyPlan({ plan: pointerPlan, auditRoot }).status, 'applied');
     assert.equal(JSON.parse(readFileSync(join(root, 'software', 'demo', 'current.json'), 'utf8')).version, '1.1.0');
     assert.equal(verifyPlanTarget({ plan: pointerPlan }).ok, true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('generates a no-code root bridge for an existing platform directory without configuration', () => {
+  const root = fixture();
+  try {
+    mkdirSync(join(root, 'dsh'));
+    const suggestion = suggestPlatformBridge({ workspaceRoot: root, platformId: 'dsh' });
+    assert.equal(suggestion.source, 'generated');
+    assert.equal(suggestion.nextStep, 'adapter-required');
+    const target = readIntegrationTarget({ workspaceRoot: root, kind: 'platform', targetId: 'dsh' });
+    const plan = buildIntegrationPlan({ workspaceRoot: root, kind: 'platform', targetId: 'dsh', beforeText: target.content, afterText: suggestion.afterText, baselineSha256: target.sha256 });
+    assert.equal(applyPlan({ plan, afterText: suggestion.afterText, auditRoot: join(root, 'audit') }).status, 'applied');
+    assert.equal(verifyPlanTarget({ plan }).ok, true);
+    assert.equal(JSON.parse(readFileSync(join(root, 'dsh', 'bridge.json'), 'utf8')).platform, 'dsh');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
