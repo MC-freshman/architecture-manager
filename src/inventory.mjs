@@ -5,12 +5,13 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { listSoftware } from './software.mjs';
 import { inspectGit } from './git.mjs';
-import { EXTRA_DOCUMENTS, TOP_LEVEL_REQUIREMENTS } from './documents.mjs';
+import { documentKind, EXTRA_DOCUMENTS, UPDATE_LOG_PATH } from './documents.mjs';
 
 export const FORMAL_TOP_LEVEL_DIRECTORIES = [
   '.workbuddy',
   '.zcode',
   'agent',
+  'architecture-manager',
   'codex',
   'docs-site',
   'doubao',
@@ -161,7 +162,7 @@ function summarizeDocument(root, path) {
   const pItems = [...content.replace(/\*\*/g, '').matchAll(/^\s*(?:\|\s*|#{1,6}\s*)?(P\d+[A-Za-z]?)(?=[：: \t|])/gmi)].map((match) => match[1].toUpperCase());
   return {
     path,
-    kind: TOP_LEVEL_REQUIREMENTS.has(path) ? 'top-level-requirements' : path.includes('实施表') ? 'implementation-table' : path.includes('方案') ? 'proposal' : path.includes('台账') || path.includes('LEDGER') ? 'ledger' : 'architecture-document',
+    kind: documentKind(path),
     bytes: Buffer.byteLength(content, 'utf8'),
     checklistTotal: checklist.length,
     checklistDone: done,
@@ -198,7 +199,8 @@ export function scanWorkspace(workspaceRoot) {
       .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
       .map((entry) => relativePath(root, join(runtimeDocsRoot, entry.name))));
   }
-  const uniqueArchitectureDocuments = [...new Set(architectureDocuments)].sort();
+  const uniqueArchitectureDocuments = [...new Set(architectureDocuments)].sort((left, right) =>
+    left === UPDATE_LOG_PATH ? -1 : right === UPDATE_LOG_PATH ? 1 : left.localeCompare(right));
   const documentSummaries = uniqueArchitectureDocuments.map((path) => summarizeDocument(root, path));
   const agents = [];
   const skills = [];

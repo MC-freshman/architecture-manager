@@ -4,10 +4,10 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { assertWithinRoot, inspectPlatformDirectory, scanWorkspace } from '../src/inventory.mjs';
+import { assertWithinRoot, FORMAL_TOP_LEVEL_DIRECTORIES, inspectPlatformDirectory, scanWorkspace } from '../src/inventory.mjs';
 import { buildPlatformViewPlan, buildResourcePointerPlan } from '../src/plans.mjs';
 import { buildRegistryPlan, readCatalogEntry } from '../src/catalog.mjs';
-import { buildDocumentPlan } from '../src/documents.mjs';
+import { buildDocumentPlan, readDocument } from '../src/documents.mjs';
 import { buildSoftwareLaunchPlan, listSoftware } from '../src/software.mjs';
 import { backupAndRestoreFixture, buildGitPlan, scanSensitiveFiles } from '../src/git.mjs';
 import { applyPlan, verifyPlanTarget } from '../src/transactions.mjs';
@@ -40,6 +40,20 @@ test('scans a workspace without writing', () => {
     assert.equal(result.platforms.find((item) => item.id === 'codex').bridge, 'codex/bridge/bridge.json');
     assert.deepEqual(result.architectureDocuments, ['versions/architecture.md']);
     assert.equal(result.documentSummaries[0].bytes > 0, true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('shows the update log first with the same document kind in scan and read views', () => {
+  const root = fixture();
+  try {
+    writeFileSync(join(root, 'versions', '更新日志.md'), '# 更新日志\n');
+    const inventory = scanWorkspace(root);
+    assert.equal(FORMAL_TOP_LEVEL_DIRECTORIES.includes('architecture-manager'), true);
+    assert.equal(inventory.architectureDocuments[0], 'versions/更新日志.md');
+    assert.equal(inventory.documentSummaries[0].kind, 'update-log');
+    assert.equal(readDocument(root, 'versions/更新日志.md').kind, 'update-log');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

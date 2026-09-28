@@ -4,6 +4,7 @@ import { join, normalize, relative, resolve, sep } from 'node:path';
 
 export const TOP_LEVEL_REQUIREMENTS = new Set(['versions/架构基本原则.md', 'AGENTS.md', 'AI_ARCHITECTURE_SYSTEM_PROMPT.md', 'agentic-workflow-master-manual.md', 'HANDOFF.md', 'invocation-adapters-spec.md']);
 export const EXTRA_DOCUMENTS = [...TOP_LEVEL_REQUIREMENTS].filter((path) => !path.includes('/')).concat(['architecture-manager/README.md']);
+export const UPDATE_LOG_PATH = 'versions/更新日志.md';
 
 function sha256(text) {
   return createHash('sha256').update(text, 'utf8').digest('hex');
@@ -21,11 +22,12 @@ function normalizeRelativePath(relativePath) {
   return normalized;
 }
 
-function documentKind(path) {
+export function documentKind(path) {
+  if (path === UPDATE_LOG_PATH) return 'update-log';
+  if (TOP_LEVEL_REQUIREMENTS.has(path)) return 'top-level-requirements';
   if (path.includes('实施表')) return 'implementation-table';
   if (path.includes('方案')) return 'proposal';
   if (path.includes('台账') || path.includes('LEDGER')) return 'ledger';
-  if (TOP_LEVEL_REQUIREMENTS.has(path)) return 'top-level-requirements';
   return 'architecture-document';
 }
 
