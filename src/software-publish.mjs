@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 
 const PLATFORMS = new Set(['codex', 'dsh', 'workbuddy', 'zcode', 'doubao', 'qoder']);
@@ -178,6 +178,7 @@ export function applySoftwareRecipe({ plan }, { probeVersion = probe, verifyPubl
   let registryWritten = false;
   let connectorWritten = false;
   let pointerCreated = false;
+  let releaseCreated = false;
   try {
     for (const [name, content] of Object.entries(payload.files)) {
       const file = join(stage, name);
@@ -187,6 +188,7 @@ export function applySoftwareRecipe({ plan }, { probeVersion = probe, verifyPubl
     for (const [name, content] of Object.entries(payload.files)) if (sha(readFileSync(join(stage, name))) !== sha(content)) throw new Error('SOFTWARE_RELEASE_HASH_MISMATCH');
     mkdirSync(releaseParent, { recursive: true });
     renameSync(stage, target.path);
+    releaseCreated = true;
     atomicText(pointerPath, payload.pointer, plan.planId);
     pointerCreated = true;
     atomicText(registryPath, payload.registry, plan.planId);
@@ -195,12 +197,20 @@ export function applySoftwareRecipe({ plan }, { probeVersion = probe, verifyPubl
     connectorWritten = true;
     const verification = verifySoftwareRecipe({ plan });
     if (!verification.ok) throw new Error('SOFTWARE_PUBLISH_VERIFY_FAILED');
-    const check = verifyPublished(root, target, connector);
+    let check;
+    try { check = verifyPublished(root, target, connector); }
+    catch (error) { check = { connectorDispatchable: false, singleCellReached: false, issues: [`发布后检查失败：${String(error.message).slice(0, 500)}`] }; }
     return { ...verification, status: check.connectorDispatchable && check.singleCellReached ? 'published-version-only' : 'published-pending-verification', check, writePerformed: true };
   } catch (error) {
     if (connectorWritten) atomicText(target.connectorConfigPath, oldConnector, `${plan.planId}-restore`);
     if (registryWritten) atomicText(registryPath, oldRegistry, `${plan.planId}-restore`);
     if (pointerCreated && existsSync(pointerPath)) rmSync(pointerPath, { force: true });
+    if (releaseCreated && existsSync(target.path)) {
+      rmSync(target.path, { recursive: true, force: true });
+      for (const emptyParent of [releaseParent, dirname(releaseParent)]) {
+        try { rmdirSync(emptyParent); } catch { /* Preserve a nonempty directory. */ }
+      }
+    }
     throw error;
   } finally {
     if (existsSync(stage)) rmSync(stage, { recursive: true, force: true });

@@ -281,6 +281,24 @@ test('publishes only a probed CLI version capability and binds its platform conn
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test('a published recipe stays pending when connector verification cannot complete', () => {
+  const root = fixture();
+  const source = join(root, 'my-tool.exe');
+  writeFileSync(source, 'test-only-executable-bytes');
+  writeFileSync(join(root, 'software', 'registry.json'), JSON.stringify({ schema: 'ai-software-registry/v1', version: 1, software: [] }));
+  writeFileSync(join(root, 'codex', 'bridge', 'software-gateway-config.json'), JSON.stringify({ softwareRoot: join(root, 'software'), bodies: {} }));
+  writeFileSync(join(root, 'codex', 'bridge', 'runner-config.json'), JSON.stringify({ platform: 'codex', softwareGateway: join(root, 'software', '_connector', 'versions', '1.0.7', 'connector.py'), softwareGatewayConfig: join(root, 'codex', 'bridge', 'software-gateway-config.json') }));
+  const probeVersion = () => 'my-tool 1.2.3';
+  try {
+    applyPlan({ plan: buildSoftwareImportPlan({ workspaceRoot: root, platformId: 'codex', softwareId: 'my-tool', sourcePath: source, intakeKind: 'portable-file' }) });
+    const plan = buildSoftwareRecipePlan({ workspaceRoot: root, platformId: 'codex', softwareId: 'my-tool', bodyName: 'my-tool.exe', displayName: 'My Tool', upstreamVersion: '1.2.3', license: 'unknown' }, { probeVersion });
+    const result = applySoftwareRecipe({ plan }, { probeVersion, verifyPublished: () => { throw new Error('connector unavailable'); } });
+    assert.equal(result.status, 'published-pending-verification');
+    assert.equal(result.check.connectorDispatchable, false);
+    assert.equal(verifySoftwareRecipe({ plan }).ok, true);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('creates guarded Git plans without applying them', () => {
   const commit = buildGitPlan({ workspaceRoot: 'C:/workspace', action: 'commit', message: 'update manager', now: '2026-09-25T00:00:00.000Z' });
   assert.equal(commit.kind, 'git-commit');
@@ -446,6 +464,20 @@ test('migrates a legacy bridge and its runner reference together without deletin
     assert.equal(readFileSync(newBridge, 'utf8'), readFileSync(oldBridge, 'utf8'));
     assert.equal(verifyPlanTarget({ plan }).ok, true);
     assert.equal(applyPlan({ plan, auditRoot: join(root, 'audit') }).status, 'already-applied');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a bridge migration interrupted after checkpoints leaves both files unchanged', () => {
+  const root = fixture();
+  const runner = join(root, 'codex', 'bridge', 'runner-config.json');
+  const oldBridge = join(root, 'codex', 'bridge', 'bridge.json');
+  writeFileSync(runner, `${JSON.stringify({ platform: 'codex', bridge: oldBridge }, null, 2)}\n`);
+  const runnerBefore = readFileSync(runner, 'utf8');
+  try {
+    const plan = buildIntegrationPlan({ workspaceRoot: root, kind: 'platform', targetId: 'codex', afterText: suggestPlatformBridge({ workspaceRoot: root, platformId: 'codex' }).afterText });
+    assert.throws(() => applyPlan({ plan, auditRoot: join(root, 'audit'), failAfterCheckpoint: true }), /SIMULATED_INTERRUPT/);
+    assert.equal(existsSync(join(root, 'codex', 'bridge.json')), false);
+    assert.equal(readFileSync(runner, 'utf8'), runnerBefore);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
