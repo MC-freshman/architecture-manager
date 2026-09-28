@@ -29,12 +29,6 @@ export const FORMAL_TOP_LEVEL_DIRECTORIES = [
 export const PLATFORM_IDS = ['codex', 'dsh', 'workbuddy', 'zcode', 'doubao', 'qoder'];
 export const SHARED_REPOSITORIES = ['tool', 'agent', 'software'];
 
-const PLATFORM_MARKERS = [
-  ['bridge/bridge.json', 'bridge'],
-  ['bridge/platform.md', 'platform chapter'],
-  ['bridge.json', 'bridge']
-];
-
 function asPosixPath(value) {
   return value.split(sep).join('/');
 }
@@ -118,15 +112,6 @@ function listReleasePointers(root, repository) {
   return { repository, exists: true, pointers, errors };
 }
 
-function findBridge(root, platform) {
-  const candidates = [
-    join(root, platform, 'bridge', 'bridge.json'),
-    join(root, platform, 'bridge.json')
-  ];
-  const found = candidates.find((candidate) => existsSync(candidate) && lstatSync(candidate).isFile());
-  return found ? relativePath(root, found) : null;
-}
-
 export function inspectPlatformDirectory(workspaceRoot, platformId, directoryRelative = platformId) {
   const root = normalizeRoot(workspaceRoot);
   if (typeof platformId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(platformId)) throw new Error('INVALID_PLATFORM_ID');
@@ -136,19 +121,27 @@ export function inspectPlatformDirectory(workspaceRoot, platformId, directoryRel
   if (rel.startsWith(`..${sep}`) || rel === '..' || isAbsolute(rel)) throw new Error('PLATFORM_PATH_OUTSIDE_WORKSPACE');
   if (!PLATFORM_IDS.includes(platformId) || resolve(root, platformId) !== candidate) throw new Error('PLATFORM_DIRECTORY_MISMATCH');
   const directoryExists = existsSync(candidate) && statSync(candidate).isDirectory();
-  const markers = PLATFORM_MARKERS.map(([marker, label]) => ({
-    path: asPosixPath(join(rel, marker)),
-    label,
-    exists: directoryExists && existsSync(join(candidate, marker)) && statSync(join(candidate, marker)).isFile()
-  }));
-  const bridge = markers.find((marker) => marker.label === 'bridge' && marker.exists)?.path || null;
-  const status = !directoryExists ? 'missing-directory' : bridge ? 'ready' : 'missing-bridge-marker';
+  const canonical = join(candidate, 'bridge.json');
+  const legacy = join(candidate, 'bridge', 'bridge.json');
+  const canonicalExists = directoryExists && existsSync(canonical) && lstatSync(canonical).isFile();
+  const legacyExists = directoryExists && existsSync(legacy) && lstatSync(legacy).isFile();
+  const bridge = canonicalExists ? asPosixPath(join(rel, 'bridge.json')) : legacyExists ? asPosixPath(join(rel, 'bridge', 'bridge.json')) : null;
+  const bridgeConflict = canonicalExists && legacyExists && !readFileSync(canonical).equals(readFileSync(legacy));
+  const chapter = join(candidate, 'bridge', 'platform.md');
+  const markers = [
+    { path: bridge || asPosixPath(join(rel, 'bridge.json')), label: 'bridge.json', exists: Boolean(bridge) },
+    { path: asPosixPath(join(rel, 'bridge', 'platform.md')), label: 'platform chapter', exists: directoryExists && existsSync(chapter) && statSync(chapter).isFile() }
+  ];
+  const status = !directoryExists ? 'missing-directory' : bridgeConflict ? 'bridge-conflict' : bridge ? 'ready' : 'missing-bridge-marker';
   return {
     id: platformId,
     directoryRelative: asPosixPath(rel),
     directoryPath: candidate,
     directoryExists,
     bridge,
+    bridgeLocation: canonicalExists ? 'root' : legacyExists ? 'legacy' : 'missing',
+    bridgeConflict,
+    legacyBridge: legacyExists ? asPosixPath(join(rel, 'bridge', 'bridge.json')) : null,
     markers,
     status,
     validForView: directoryExists && Boolean(bridge)

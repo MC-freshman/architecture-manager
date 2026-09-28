@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 
 const RESOURCE_KINDS = new Set(['tool', 'agent', 'software']);
@@ -33,10 +33,6 @@ function pathFor(root, relativePath) {
   return target;
 }
 
-function relativePath(root, target) {
-  return relative(root, target).split(sep).join('/');
-}
-
 function assertId(id, code = 'INVALID_INTEGRATION_ID') {
   if (typeof id !== 'string' || !ID.test(id)) throw new Error(code);
 }
@@ -53,23 +49,8 @@ function platformCandidates(root, platformId) {
   assertId(platformId, 'INVALID_PLATFORM_ID');
   if (!PLATFORM_IDS.has(platformId)) throw new Error('UNKNOWN_PLATFORM_ID');
   const platformRoot = join(root, platformId);
-  const bridge = join(platformRoot, 'bridge');
-  const paths = [];
-  if (existsSync(bridge) && statSync(bridge).isDirectory()) {
-    for (const entry of readdirSync(bridge, { withFileTypes: true })) {
-      if (entry.isFile() && entry.name.endsWith('.json')) paths.push(relativePath(root, join(bridge, entry.name)));
-    }
-  }
-  const legacy = join(platformRoot, 'bridge.json');
-  if (existsSync(legacy) && statSync(legacy).isFile()) paths.push(relativePath(root, legacy));
-  if (!paths.length && existsSync(bridge) && statSync(bridge).isDirectory()) paths.push(`${platformId}/bridge/bridge.json`);
-  if (existsSync(bridge) && statSync(bridge).isDirectory()) {
-    for (const standard of ['runner-config.json', 'capabilities.json']) {
-      const candidate = `${platformId}/bridge/${standard}`;
-      if (!paths.includes(candidate)) paths.push(candidate);
-    }
-  }
-  return [...new Set(paths)].sort();
+  if (!existsSync(platformRoot) || !statSync(platformRoot).isDirectory()) return [];
+  return [`${platformId}/bridge.json`];
 }
 
 function resourceCandidates(root, kind, id) {
@@ -158,7 +139,12 @@ export function readIntegrationTarget({ workspaceRoot, kind, targetId, relativeP
   if (data.exists) {
     try { parsed = JSON.parse(data.content); } catch { parsed = null; }
   }
-  return { schema: 'architecture-manager-integration-target/v1', kind, targetId, path, ...data, parsed, writePerformed: false };
+  let migrationSource = null;
+  if (kind === 'platform' && !data.exists) {
+    const legacy = readText(root, `${targetId}/bridge/bridge.json`);
+    if (legacy.exists) migrationSource = legacy;
+  }
+  return { schema: 'architecture-manager-integration-target/v1', kind, targetId, path, ...data, parsed, migrationSource, writePerformed: false };
 }
 
 export function buildIntegrationPlan({ workspaceRoot, kind, targetId, mode = 'config', relativePath = null, beforeText = null, afterText = null, baselineSha256 = null, currentVersion = null, targetVersion = null, availableVersions = [], now = new Date().toISOString() }) {
@@ -167,6 +153,8 @@ export function buildIntegrationPlan({ workspaceRoot, kind, targetId, mode = 'co
     if (mode !== 'config') throw new Error('PLATFORM_CONFIG_ONLY');
     const path = targetPathFor(root, kind, targetId, relativePath);
     const current = readText(root, path);
+    const legacy = readText(root, `${targetId}/bridge/bridge.json`);
+    if (current.exists && legacy.exists && current.content !== legacy.content) throw new Error('PLATFORM_BRIDGE_CONFLICT');
     const before = beforeText ?? current.content;
     if (current.sha256 !== (baselineSha256 ?? current.sha256) || current.content !== before) throw new Error('INTEGRATION_BASELINE_MISMATCH');
     const next = parseJson(afterText);

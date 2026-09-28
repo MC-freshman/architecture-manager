@@ -38,6 +38,7 @@ test('scans a workspace without writing', () => {
     assert.equal(result.writePerformed, false);
     assert.equal(result.sharedRepositories[0].pointers[0].version, '1.0.0');
     assert.equal(result.platforms.find((item) => item.id === 'codex').bridge, 'codex/bridge/bridge.json');
+    assert.equal(result.platforms.find((item) => item.id === 'codex').markers.filter((item) => item.label === 'bridge.json').length, 1);
     assert.deepEqual(result.architectureDocuments, ['versions/architecture.md']);
     assert.equal(result.documentSummaries[0].bytes > 0, true);
   } finally {
@@ -313,7 +314,9 @@ test('plans and applies GUI integration for platform config and shared resource 
   const auditRoot = join(root, 'audit');
   try {
     const platform = readIntegrationTarget({ workspaceRoot: root, kind: 'platform', targetId: 'codex' });
-    assert.equal(platform.path, 'codex/bridge/bridge.json');
+    assert.equal(platform.path, 'codex/bridge.json');
+    assert.equal(platform.exists, false);
+    assert.equal(platform.migrationSource.path, 'codex/bridge/bridge.json');
     const platformPlan = buildIntegrationPlan({
       workspaceRoot: root,
       kind: 'platform',
@@ -351,10 +354,26 @@ test('plans and applies GUI integration for platform config and shared resource 
 test('rejects GUI integration paths outside the existing workspace shape and raw secrets', () => {
   const root = fixture();
   try {
-    assert.deepEqual(listIntegrationTargets({ workspaceRoot: root, kind: 'platform', targetId: 'codex' }).paths, ['codex/bridge/bridge.json', 'codex/bridge/capabilities.json', 'codex/bridge/runner-config.json']);
+    assert.deepEqual(listIntegrationTargets({ workspaceRoot: root, kind: 'platform', targetId: 'codex' }).paths, ['codex/bridge.json']);
     const current = readIntegrationTarget({ workspaceRoot: root, kind: 'platform', targetId: 'codex' });
     assert.throws(() => buildIntegrationPlan({ workspaceRoot: root, kind: 'platform', targetId: 'codex', relativePath: '../outside.json', beforeText: current.content, afterText: '{}', baselineSha256: current.sha256 }), /INTEGRATION_TARGET_OUTSIDE_WORKSPACE|PLATFORM_CONFIG_TARGET_NOT_ALLOWED/);
     assert.throws(() => buildIntegrationPlan({ workspaceRoot: root, kind: 'platform', targetId: 'codex', relativePath: current.path, beforeText: current.content, afterText: '{"token":"plain-text"}', baselineSha256: current.sha256 }), /RAW_SECRET_NOT_ALLOWED/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('prefers root bridge and reports divergent legacy bridge without a duplicate marker', () => {
+  const root = fixture();
+  try {
+    writeFileSync(join(root, 'codex', 'bridge.json'), '{"platform":"codex"}\n');
+    const inspected = inspectPlatformDirectory(root, 'codex');
+    assert.equal(inspected.bridge, 'codex/bridge.json');
+    assert.equal(inspected.bridgeLocation, 'root');
+    assert.equal(inspected.bridgeConflict, true);
+    assert.equal(inspected.status, 'bridge-conflict');
+    assert.equal(inspected.markers.filter((item) => item.label === 'bridge.json').length, 1);
+    assert.throws(() => buildIntegrationPlan({ workspaceRoot: root, kind: 'platform', targetId: 'codex', afterText: '{"platform":"codex","x":1}', baselineSha256: readIntegrationTarget({ workspaceRoot: root, kind: 'platform', targetId: 'codex' }).sha256 }), /PLATFORM_BRIDGE_CONFLICT/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
