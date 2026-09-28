@@ -330,6 +330,14 @@ function App() {
     }
   };
 
+  const previewSoftwareImport = async (selection) => {
+    try {
+      const plan = await api.previewSoftwareImportPlan({ workspaceRoot: workspace, ...selection });
+      setPlanPreview(plan); setPlanPayload(null);
+      setMessage(`已生成 ${selection.softwareId} 安置与备份计划：${plan.rows.length} 个文件；尚未复制。`);
+    } catch (error) { setMessage(`软件安置计划被拒绝：${friendlyError(error)}`); }
+  };
+
   const previewSoftwareLocation = async (item) => {
     try {
       const plan = await api.previewSoftwarePlan({ workspaceRoot: workspace, softwareId: item.id, mode: 'open-location' });
@@ -383,7 +391,7 @@ function App() {
       setGitDetails(refreshed.git);
       setPlanPreview(null);
       setPlanPayload(null);
-      setMessage(`计划已${applied.status === 'already-applied' ? '确认已执行' : '执行'}，验证${verification.ok ? '通过' : '未通过'}。`);
+      setMessage(planPreview.kind === 'software-import' ? `软件本体安置与恢复演练${verification.ok ? '通过' : '未通过'}；尚未发布配方，也未接入连接器。` : `计划已${applied.status === 'already-applied' ? '确认已执行' : '执行'}，验证${verification.ok ? '通过' : '未通过'}。`);
     } catch (error) {
       setMessage(`计划执行失败：${friendlyError(error)}`);
     } finally {
@@ -423,7 +431,7 @@ function App() {
           <HelpPanel />
           <ResourcePanel inventory={inventory} resources={resources} resourceFilter={resourceFilter} setResourceFilter={setResourceFilter} targetVersions={targetVersions} setTargetVersions={setTargetVersions} previewResource={previewResource} />
           <DocumentPanel documentSummaries={documentSummaries} visibleDocuments={visibleDocuments} documentFilter={documentFilter} setDocumentFilter={setDocumentFilter} selectedDocument={selectedDocument} documentDraft={documentDraft} setDocumentDraft={setDocumentDraft} sensitiveConfirmed={sensitiveConfirmed} setSensitiveConfirmed={setSensitiveConfirmed} openDocument={openDocument} previewDocument={previewDocument} />
-          <SoftwarePanel inventory={inventory} software={software} softwareResults={softwareResults} checkSoftware={checkSoftware} previewSoftwareLocation={previewSoftwareLocation} previewSoftware={previewSoftware} />
+          <SoftwarePanel api={api} workspace={workspace} inventory={inventory} software={software} softwareResults={softwareResults} checkSoftware={checkSoftware} previewSoftwareLocation={previewSoftwareLocation} previewSoftware={previewSoftware} previewSoftwareImport={previewSoftwareImport} setMessage={setMessage} />
           <GitPanel gitDetails={gitDetails} workspace={workspace} refreshGit={refreshGit} previewGit={previewGit} sensitiveScan={sensitiveScan} />
         </div>
         <PlanPreview planPreview={planPreview} executePlan={executePlan} closePlan={() => { setPlanPreview(null); setPlanPayload(null); }} planWriteKinds={PLAN_WRITE_KINDS} />

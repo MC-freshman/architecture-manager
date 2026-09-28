@@ -11,6 +11,7 @@ import {
   buildRegistryPlan,
   buildResourcePointerPlan,
   buildSoftwareLaunchPlan,
+  buildSoftwareImportPlan,
   healthSoftware,
   inspectGit,
   inspectPlatformDirectory,
@@ -65,6 +66,11 @@ function registerReadOnlyIpc() {
   ipcMain.handle('plan:document', (_event, input) => buildDocumentPlan(input));
   ipcMain.handle('software:health', (_event, input) => healthSoftware(input.workspaceRoot, input.softwareId));
   ipcMain.handle('plan:software', (_event, input) => buildSoftwareLaunchPlan(input));
+  ipcMain.handle('plan:software-import', (_event, input) => buildSoftwareImportPlan(input));
+  ipcMain.handle('software:select-source', async (_event, kind) => {
+    const result = await dialog.showOpenDialog({ title: kind === 'unpacked-directory' ? '选择已解压的软件目录' : '选择下载的软件文件', properties: [kind === 'unpacked-directory' ? 'openDirectory' : 'openFile'] });
+    return result.canceled ? null : result.filePaths[0] ?? null;
+  });
   ipcMain.handle('software:open-location', async (_event, input) => {
     const plan = buildSoftwareLaunchPlan({ workspaceRoot: input.workspaceRoot, softwareId: input.softwareId, mode: 'open-location' });
     if (!plan.target.bodyPath || !existsSync(plan.target.bodyPath) || !statSync(plan.target.bodyPath).isDirectory()) throw new Error('SOFTWARE_BODY_PATH_NOT_FOUND');

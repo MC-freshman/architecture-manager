@@ -14,6 +14,7 @@ import { applyPlan, verifyPlanTarget } from '../src/transactions.mjs';
 import { buildIntegrationPlan, listIntegrationTargets, readIntegrationTarget, suggestPlatformBridge } from '../src/integration.mjs';
 import { inspectPlatformConnection, runPlatformCheck } from '../src/platform-check.mjs';
 import { latestStableVersion } from '../src/core/versions.mjs';
+import { buildSoftwareImportPlan } from '../src/software-intake.mjs';
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'architecture-manager-'));
@@ -217,6 +218,34 @@ test('lists registered software and creates a provider-only launch plan', () => 
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('imports a new software file into one platform with a full backup and real restore drill', () => {
+  const root = fixture();
+  const source = join(root, 'downloaded-tool.exe');
+  writeFileSync(source, 'harmless-test-body');
+  try {
+    const plan = buildSoftwareImportPlan({ workspaceRoot: root, platformId: 'codex', softwareId: 'new-tool', sourcePath: source, intakeKind: 'portable-file', now: '2026-09-28T12:00:00.000Z' });
+    assert.equal(plan.writePerformed, false);
+    const result = applyPlan({ plan });
+    assert.equal(result.status, 'staged-awaiting-recipe');
+    assert.equal(result.restored, true);
+    assert.equal(verifyPlanTarget({ plan }).ok, true);
+    assert.equal(readFileSync(join(root, 'codex', 'runtime', 'software', 'new-tool', 'downloaded-tool.exe'), 'utf8'), 'harmless-test-body');
+    assert.equal(existsSync(join(root, 'software', 'new-tool')), false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('software import refuses changed source bytes before any copy', () => {
+  const root = fixture();
+  const source = join(root, 'downloaded-tool.exe');
+  writeFileSync(source, 'first');
+  try {
+    const plan = buildSoftwareImportPlan({ workspaceRoot: root, platformId: 'codex', softwareId: 'new-tool', sourcePath: source, intakeKind: 'portable-file', now: '2026-09-28T12:00:00.000Z' });
+    writeFileSync(source, 'changed');
+    assert.throws(() => applyPlan({ plan }), /SOFTWARE_SOURCE_CHANGED/);
+    assert.equal(existsSync(join(root, 'codex', 'runtime', 'software', 'new-tool')), false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test('creates guarded Git plans without applying them', () => {

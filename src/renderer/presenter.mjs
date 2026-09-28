@@ -5,7 +5,8 @@ export const PLAN_WRITE_KINDS = [
   'registry-edit',
   'integration-config',
   'integration-pointer',
-  'integration-registry'
+  'integration-registry',
+  'software-import'
 ];
 
 export function friendlyError(error) {

@@ -3,6 +3,7 @@ import { buildRegistryPlan } from './catalog.mjs';
 import { inspectPlatformDirectory } from './inventory.mjs';
 import { buildIntegrationPlan } from './integration.mjs';
 import { assertPublishedVersion } from './plans.mjs';
+import { applySoftwareImport, verifySoftwareImport } from './software-intake.mjs';
 import { resolve } from 'node:path';
 import { defaultAuditRoot, localViewPath, safeRelative, targetPath } from './core/paths.mjs';
 import { sha256 } from './core/hash.mjs';
@@ -15,6 +16,7 @@ export function applyPlan({ plan, afterText = null, actor = 'local-user', auditR
   if (plan.kind === 'platform-view') return applyPlatformView(plan, { actor, auditRoot, now, failAfterCheckpoint });
   if (plan.kind === 'registry-edit') return applyRegistry(plan, afterText || plan.payload?.afterText, { actor, auditRoot, now, failAfterCheckpoint });
   if (plan.kind === 'integration-config' || plan.kind === 'integration-pointer' || plan.kind === 'integration-registry') return applyIntegration(plan, afterText || plan.payload?.afterText, { actor, auditRoot, now, failAfterCheckpoint });
+  if (plan.kind === 'software-import') return applySoftwareImport({ plan });
   throw new Error('TRANSACTION_KIND_UNSUPPORTED');
 }
 
@@ -212,6 +214,7 @@ function applyIntegration(plan, afterText, context) {
 
 export function verifyPlanTarget({ plan }) {
   requirePlan(plan);
+  if (plan.kind === 'software-import') return verifySoftwareImport({ plan });
   if (plan.kind === 'document-edit') {
     const target = targetPath(plan.workspaceRoot, plan.target.path);
     const content = readFileSync(target, 'utf8');

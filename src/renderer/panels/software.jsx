@@ -1,7 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 
-export function SoftwarePanel({ inventory, software, softwareResults, checkSoftware, previewSoftwareLocation, previewSoftware }) {
+export function SoftwarePanel({ api, workspace, inventory, software, softwareResults, checkSoftware, previewSoftwareLocation, previewSoftware, previewSoftwareImport, setMessage }) {
+  const [platformId, setPlatformId] = useState('codex');
+  const [softwareId, setSoftwareId] = useState('');
+  const [intakeKind, setIntakeKind] = useState('portable-file');
+  const [sourcePath, setSourcePath] = useState('');
+  const chooseSource = async () => {
+    try { setSourcePath(await api.selectSoftwareSource(intakeKind) || ''); }
+    catch (error) { setMessage(`选择文件失败：${String(error?.message ?? error)}`); }
+  };
   return <section className="panel software-panel"><div className="panel-title"><span>软件中心</span><span className="muted">recipe / connector</span></div><div className="rows">
+    {inventory && <div className="software-intake"><div className="integration-help">添加新软件：从“下载”位置选择文件或已解压目录。管理台会复制到所属平台的 runtime/software，并做完整备份与真实恢复演练；共享 software 仓只放后续配方，不放程序本体。</div><div className="integration-form"><label>所属平台<select value={platformId} onChange={(event) => setPlatformId(event.target.value)}>{(inventory.platforms || []).filter((item) => item.directoryExists).map((item) => <option key={item.id} value={item.id}>{item.id}</option>)}</select></label><label>软件 ID（英文小写）<input value={softwareId} onChange={(event) => setSoftwareId(event.target.value.toLowerCase())} placeholder="例如 my-editor" /></label><label>下载内容<select value={intakeKind} onChange={(event) => { setIntakeKind(event.target.value); setSourcePath(''); }}><option value="portable-file">便携程序文件</option><option value="unpacked-directory">已解压软件目录</option><option value="installer">安装包（只登记，不自动安装）</option></select></label></div><div className="path-line">所选来源：{sourcePath || '尚未选择'}</div><div className="resource-actions"><button className="small-button" onClick={chooseSource}>选择文件或目录</button><button className="small-button primary-small" disabled={!workspace || !sourcePath || !/^[a-z0-9][a-z0-9._-]*$/.test(softwareId)} onClick={() => previewSoftwareImport({ platformId, softwareId, sourcePath, intakeKind })}>预览安置与备份计划</button></div></div>}
     {software.map((item) => { const result = softwareResults[item.id]; return <div className="software-row" key={item.id}><div className="software-main"><span className="row-name">{item.displayName}</span><span className="resource-repo">{item.id} · {item.version}</span><div className="software-meta">{item.transport || '未声明'} · {item.bodyExists === true ? '本体已发现' : item.bodyExists === false ? '本体未发现' : '路径待核对'} · {item.snapshotFrozen ? '快照已冻结' : '快照待核验'}</div><div className="software-path"><strong>绝对路径：</strong>{item.bodyPath || '配方未声明'}<br /><strong>工作区相对配方：</strong>{item.versionRoot}<br /><strong>入口：</strong>{item.entrypoint || item.versionCall?.[0] || '由 connector/provider 处理'}{item.endpoint && <><br /><strong>端点：</strong>{item.endpoint}</>}</div></div><div className="resource-actions software-actions"><span className={result?.status === 'PASS' ? 'pill good' : result ? 'pill warn' : 'pill'}>{result?.status || '未检查'}</span><button className="small-button" onClick={() => checkSoftware(item)}>健康检查</button><button className="small-button" onClick={() => previewSoftwareLocation(item)}>打开位置</button><button className="small-button" onClick={() => previewSoftware(item)}>启动计划</button></div></div>; })}
     {!inventory && <div className="empty">选择工作区后显示软件。</div>}
   </div></section>;

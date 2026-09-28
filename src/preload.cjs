@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld('architectureManager', Object.freeze({
   previewDocumentPlan: (input) => ipcRenderer.invoke('plan:document', input),
   softwareHealth: (input) => ipcRenderer.invoke('software:health', input),
   previewSoftwarePlan: (input) => ipcRenderer.invoke('plan:software', input),
+  previewSoftwareImportPlan: (input) => ipcRenderer.invoke('plan:software-import', input),
+  selectSoftwareSource: (kind) => ipcRenderer.invoke('software:select-source', kind),
   openSoftwareLocation: (input) => ipcRenderer.invoke('software:open-location', input),
   inspectGit: (root) => ipcRenderer.invoke('git:inspect', root),
   scanSensitiveFiles: (root) => ipcRenderer.invoke('git:sensitive-scan', root),
