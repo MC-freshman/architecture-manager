@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 export function CatalogPanel({ api, workspace, inventory, catalogFilter, setCatalogFilter, agents, skills, skillFilter, setSkillFilter, catalogDetail, setCatalogDetail, skillDetail, setSkillDetail, openCatalog, previewRegistryAction, friendlyError, setMessage }) {
   const [page, setPage] = useState(0);
