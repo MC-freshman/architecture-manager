@@ -6,4 +6,5 @@ export { buildSoftwareLaunchPlan } from '../software.mjs';
 export { buildGitPlan } from '../git.mjs';
 export { buildIntegrationPlan } from '../integration.mjs';
 export { applyPlan, verifyPlanTarget } from '../transactions.mjs';
+export { runPlatformCheck } from '../platform-check.mjs';
 

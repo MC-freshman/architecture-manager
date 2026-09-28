@@ -195,7 +195,7 @@ export function buildIntegrationPlan({ workspaceRoot, kind, targetId, mode = 'co
     if (current.sha256 !== (baselineSha256 ?? current.sha256) || current.content !== before) throw new Error('INTEGRATION_BASELINE_MISMATCH');
     const next = parseJson(afterText);
     if (next.platform !== targetId) throw new Error('PLATFORM_ID_MISMATCH');
-    if (next.schema !== 'ai-platform-bridge/v1' || !next.shared || next.shared.readOnly !== true || typeof next.shared.agentRegistry !== 'string' || typeof next.shared.toolRegistry !== 'string' || typeof next.shared.architecturePrompt !== 'string' || typeof next.runtimeRoot !== 'string' || !Array.isArray(next.modes)) throw new Error('PLATFORM_BRIDGE_INCOMPLETE');
+    if (!['ai-platform-bridge/v1', 'ai-platform-bridge/v1.1'].includes(next.schema) || !next.shared || next.shared.readOnly !== true || typeof next.shared.agentRegistry !== 'string' || typeof next.shared.toolRegistry !== 'string' || typeof next.shared.architecturePrompt !== 'string' || typeof next.runtimeRoot !== 'string' || !Array.isArray(next.modes)) throw new Error('PLATFORM_BRIDGE_INCOMPLETE');
     if (before === afterText) throw new Error('NO_INTEGRATION_CHANGE');
     const plan = basePlan('config', root, now);
     plan.target = { kind, targetId, mode, path };

@@ -188,6 +188,21 @@ function App() {
     }
   };
 
+  const checkPlatform = async (platform, mode) => {
+    if (!workspace) return;
+    const label = mode === 'full' ? '完整接入认证' : '单格调用检查';
+    if (!await api.confirm(`确认对 ${platform.id} 运行${label}？\n\n这会在该平台 runtime/manager-check 下保存检查证据；完整认证可能需要较长时间。`)) return;
+    setBusy(true);
+    setMessage(`正在检查 ${platform.id}，请等待结果……`);
+    try {
+      const result = await api.runPlatformCheck({ workspaceRoot: workspace, platformId: platform.id, mode });
+      const refreshed = await api.scanWorkspace(workspace);
+      setInventory(refreshed);
+      setMessage(`${platform.id} 检查结果：${result.stage}；${result.issues.length ? result.issues.join('；') : '无缺口'}。证据：${result.evidencePath}`);
+    } catch (error) { setMessage(`${platform.id} 检查失败：${friendlyError(error)}`); }
+    finally { setBusy(false); }
+  };
+
   const addPlatformDirectory = async () => {
     if (!workspace) return;
     const selected = await api.selectDirectory();
@@ -401,7 +416,7 @@ function App() {
         <DashboardStats inventory={inventory} gitState={gitState} />
 
         <div className="panel-grid">
-          <PlatformPanel inventory={inventory} showExcluded={showExcluded} setShowExcluded={setShowExcluded} addPlatformDirectory={addPlatformDirectory} previewPlatform={previewPlatform} />
+          <PlatformPanel inventory={inventory} showExcluded={showExcluded} setShowExcluded={setShowExcluded} addPlatformDirectory={addPlatformDirectory} previewPlatform={previewPlatform} checkPlatform={checkPlatform} busy={busy} />
           <IntegrationPanel api={api} workspace={workspace} resources={resources} integrationKind={integrationKind} setIntegrationKind={setIntegrationKind} integrationOptions={integrationOptions} integrationTargetId={integrationTargetId} setIntegrationTargetId={setIntegrationTargetId} integrationMode={integrationMode} setIntegrationMode={setIntegrationMode} integrationPaths={integrationPaths} integrationPath={integrationPath} setIntegrationPath={setIntegrationPath} integrationTarget={integrationTarget} setIntegrationTarget={setIntegrationTarget} integrationText={integrationText} setIntegrationText={setIntegrationText} integrationTargetVersion={integrationTargetVersion} setIntegrationTargetVersion={setIntegrationTargetVersion} platformSuggestion={platformSuggestion} reloadIntegrationTarget={reloadIntegrationTarget} previewIntegration={previewIntegration} friendlyError={friendlyError} setMessage={setMessage} />
           <CatalogPanel api={api} workspace={workspace} inventory={inventory} catalogFilter={catalogFilter} setCatalogFilter={setCatalogFilter} agents={agents} skills={skills} skillFilter={skillFilter} setSkillFilter={setSkillFilter} catalogDetail={catalogDetail} setCatalogDetail={setCatalogDetail} skillDetail={skillDetail} setSkillDetail={setSkillDetail} openCatalog={openCatalog} previewRegistryAction={previewRegistryAction} friendlyError={friendlyError} setMessage={setMessage} />
           <SafetyPanel />

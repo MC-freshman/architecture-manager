@@ -4,6 +4,7 @@ import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSyn
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { listSoftware } from './software.mjs';
+import { inspectPlatformConnection } from './platform-check.mjs';
 import { inspectGit } from './git.mjs';
 import { documentKind, EXTRA_DOCUMENTS, UPDATE_LOG_PATH } from './documents.mjs';
 
@@ -177,7 +178,7 @@ export function scanWorkspace(workspaceRoot) {
   const localView = readLocalView(root);
   const platforms = PLATFORM_IDS.map((id) => {
     const inspected = inspectPlatformDirectory(root, id);
-    return { ...inspected, enabled: localView.enabled[id] !== false };
+    return { ...inspected, connection: inspectPlatformConnection({ workspaceRoot: root, platformId: id }), enabled: localView.enabled[id] !== false };
   });
   const versionsRoot = join(root, 'versions');
   const architectureDocuments = existsSync(versionsRoot)

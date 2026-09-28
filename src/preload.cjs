@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('architectureManager', Object.freeze({
   selectDirectory: () => ipcRenderer.invoke('workspace:select-directory'),
   scanWorkspace: (root) => ipcRenderer.invoke('workspace:scan', root),
   inspectPlatform: (input) => ipcRenderer.invoke('platform:inspect', input),
+  inspectPlatformConnection: (input) => ipcRenderer.invoke('platform:connection', input),
+  runPlatformCheck: (input) => ipcRenderer.invoke('platform:check', input),
   previewPlatformPlan: (input) => ipcRenderer.invoke('plan:platform-view', input),
   previewResourcePlan: (input) => ipcRenderer.invoke('plan:resource-pointer', input),
   readCatalogEntry: (input) => ipcRenderer.invoke('catalog:read', input),

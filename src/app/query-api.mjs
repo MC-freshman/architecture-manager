@@ -5,4 +5,5 @@ export { readDocument } from '../documents.mjs';
 export { healthSoftware } from '../software.mjs';
 export { inspectGit, scanSensitiveFiles } from '../git.mjs';
 export { listIntegrationTargets, readIntegrationTarget, suggestPlatformBridge } from '../integration.mjs';
+export { inspectPlatformConnection } from '../platform-check.mjs';
 

@@ -14,6 +14,7 @@ import {
   healthSoftware,
   inspectGit,
   inspectPlatformDirectory,
+  inspectPlatformConnection,
   inspectRegistration,
   listIntegrationTargets,
   readCatalogEntry,
@@ -23,6 +24,7 @@ import {
   scanSensitiveFiles,
   scanWorkspace,
   suggestPlatformBridge,
+  runPlatformCheck,
   verifyPlanTarget
 } from './app/api.mjs';
 
@@ -48,6 +50,8 @@ function registerReadOnlyIpc() {
   });
   ipcMain.handle('workspace:scan', (_event, root) => scanWorkspace(root));
   ipcMain.handle('platform:inspect', (_event, input) => inspectPlatformDirectory(input.workspaceRoot, input.platformId, input.directoryRelative));
+  ipcMain.handle('platform:connection', (_event, input) => inspectPlatformConnection(input));
+  ipcMain.handle('platform:check', (_event, input) => runPlatformCheck(input));
   ipcMain.handle('plan:platform-view', (_event, input) => buildPlatformViewPlan(input));
   ipcMain.handle('plan:resource-pointer', (_event, input) => buildResourcePointerPlan(input));
   ipcMain.handle('catalog:read', (_event, input) => readCatalogEntry(input));

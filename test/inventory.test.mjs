@@ -12,6 +12,7 @@ import { buildSoftwareLaunchPlan, listSoftware } from '../src/software.mjs';
 import { backupAndRestoreFixture, buildGitPlan, scanSensitiveFiles } from '../src/git.mjs';
 import { applyPlan, verifyPlanTarget } from '../src/transactions.mjs';
 import { buildIntegrationPlan, listIntegrationTargets, readIntegrationTarget, suggestPlatformBridge } from '../src/integration.mjs';
+import { inspectPlatformConnection, runPlatformCheck } from '../src/platform-check.mjs';
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'architecture-manager-'));
@@ -363,6 +364,17 @@ test('generates a no-code root bridge for an existing platform directory without
     assert.equal(applyPlan({ plan, afterText: suggestion.afterText, auditRoot: join(root, 'audit') }).status, 'applied');
     assert.equal(verifyPlanTarget({ plan }).ok, true);
     assert.equal(JSON.parse(readFileSync(join(root, 'dsh', 'bridge.json'), 'utf8')).platform, 'dsh');
+    assert.equal(inspectPlatformConnection({ workspaceRoot: root, platformId: 'dsh' }).stage, 'adapter-required');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('refuses a real platform check when only a bridge marker exists', async () => {
+  const root = fixture();
+  try {
+    assert.equal(inspectPlatformConnection({ workspaceRoot: root, platformId: 'codex' }).stage, 'adapter-required');
+    await assert.rejects(() => runPlatformCheck({ workspaceRoot: root, platformId: 'codex' }), /PLATFORM_NOT_READY_FOR_CHECK/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

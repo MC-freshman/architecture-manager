@@ -14,9 +14,9 @@ test('application boundary exposes the complete IPC domain surface', () => {
     'applyPlan', 'buildDocumentPlan', 'buildGitPlan', 'buildIntegrationPlan',
     'buildPlatformViewPlan', 'buildRegistryPlan', 'buildResourcePointerPlan',
     'buildSoftwareLaunchPlan', 'healthSoftware', 'inspectGit',
-    'inspectPlatformDirectory', 'inspectRegistration', 'listIntegrationTargets',
+    'inspectPlatformConnection', 'inspectPlatformDirectory', 'inspectRegistration', 'listIntegrationTargets',
     'readCatalogEntry', 'readDocument', 'readIntegrationTarget', 'readSkillContent',
-    'scanSensitiveFiles', 'scanWorkspace', 'suggestPlatformBridge', 'verifyPlanTarget'
+    'runPlatformCheck', 'scanSensitiveFiles', 'scanWorkspace', 'suggestPlatformBridge', 'verifyPlanTarget'
   ];
   assert.deepEqual(Object.keys(api).sort(), expected.sort());
 });
