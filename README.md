@@ -1,10 +1,10 @@
 # Architecture Manager
 
-这是架构 3.4.0 的独立本地管理台，源码位于 `E:\\ai\\architecture-manager`。0.2.0 提供平台、版本和新软件的自助向导；不连接中心服务，也不会共享运行数据。旧发行包仍保留，勿把它们当成本版。
+这是架构 3.4.0 的独立本地管理台，源码位于 `E:\\ai\\architecture-manager`。0.2.1 提供平台、版本和新软件的自助向导；不连接中心服务，也不会共享运行数据。0.1.x 旧发行包已按 2026-09-28 清理表移入 `E:\\ai\\inbox\\trash\\architecture-manager-release-cleanup-20260928`，原位置不再可启动；0.2.0 留在 `release/` 作上一版本。
 
 ## 新手使用
 
-1. 双击 `architecture-manager/release/Architecture-Manager-0.2.0-portable-x64.exe`，或运行同目录的 `Architecture-Manager-0.2.0-setup-x64.exe`。
+1. 双击 `architecture-manager/release/Architecture-Manager-0.2.1-portable-x64.exe`，或运行同目录的 `Architecture-Manager-0.2.1-setup-x64.exe`。
 2. 点击“选择工作区”，选择自己的 `E:\\ai` 架构目录。
 3. 接平台：在“接入与版本向导”选平台和客户端，预览根级 `bridge.json`，确认保存，再到平台面运行“检查单格调用”；只有完整认证通过且能力缺口为零，才显示“接入完成”。旧位置的 bridge 会保留，迁移计划会列出客户端引用的同步更新。
 4. 切默认版本：在资源面选择 tool/agent 已发布版本，预览并确认；已有运行仍保持原来的版本锁。
@@ -15,9 +15,11 @@
 
 - **平台接入与排除**：平台面显示目录与单个 `bridge.json` 状态；根级是标准位置，旧 `bridge/bridge.json` 只作读取兼容。“排除视图”只隐藏本机管理视图，不删除平台目录。无客户端适配器时显示“待适配”。
 - **接入与版本向导**：平台无需手写 JSON；旧 bridge 的迁移会在计划中同步展示 runner 引用变更，旧文件不删除。tool/agent/software 已有资源可切换已发布的 `current` 指针；新版本不会静默改默认。所有写入先预览、确认，再按哈希回读。
-- **Agent 与 Skill**：面板默认列出两个 registry 的全部条目。点“查看全部”可阅读 agent 的 manifest/prompt 或 skill catalog 原文；添加、启用、停用、移除都只改 registry 计划，已发布版本目录不会被覆盖或删除。
+- **Agent 与 Skill**：面板列出两个 registry 的全部条目；“当前默认”以 `current.json` 为准，registry 登记版本另列。点“查看全部”可阅读 agent 的 manifest/prompt 或 skill catalog 原文；技能目录每页显示 50 条。停用/移除会检查现行启用资源的当前发布版引用，历史版本引用不会误拦；真实现行引用会列出全部文件。已发布版本目录不会被覆盖或删除。
 - **更新日志、计划和文档**：文档面将 `versions/更新日志.md` 置顶并标为“更新日志”，其余 `versions/` Markdown 可按文件名或类型筛选。实施表会显示复选框完成率和 P 项数量；打开文档后编辑仍要经过基线哈希、计划预览和确认。`架构基本原则.md` 需要额外确认。
-- **软件位置和启动**：新软件本体只复制到所属平台 `runtime/software/`，完整备份与恢复演练登记在 `inbox/backup/<platform>/`；共享 `software/` 只存配方。已登记软件显示本体路径和入口；“打开位置”需确认，“启动计划”遵守 connector/provider，不会把未适配软件伪装成已启动。
+- **软件位置和启动**：必须明确选择所属平台；界面标出是否已绑定新版连接器。软件本体安置在平台 `runtime/software/`，备份与恢复演练登记在 `inbox/backup/<platform>/`；预计额外空间约为来源文件体积的两倍（备份 + 本体，来源文件另计），复制时显示进度。两条写入路径都留下审计与 checkpoint；最近操作可在界面预览撤销安置或停用配方。已发布版本只读保留。入口栏是未解析的配方模板，不能直接当命令执行。“打开位置”需确认；“查看启动条件”是只读说明，当前**没有** GUI/MCP 启动执行器，不会启动软件。
+
+平台检查的“上次检查缓存”表示复用了旧证据，旁边显示真实检查时间；点击检查按钮才会新跑。能力缺口展开后显示逐项原因、处置和整数分钟成本；若源 `conform.json` 未声明处置，会明确写“未声明”。
 
 新手只需要选择一次 `E:\\ai` 工作区；之后所有清单由扫描结果生成。看到“缺 bridge”“本体未发现”或“待核验”时，先按面板给出的路径处理，再重新扫描。
 
@@ -25,16 +27,16 @@
 
 ## 两种 Windows 发行包
 
-- `E:\\ai\\architecture-manager\\release\\Architecture-Manager-0.2.0-portable-x64.exe`：便携版，不写系统安装项，适合先试用。
-- `E:\\ai\\architecture-manager\\release\\Architecture-Manager-0.2.0-setup-x64.exe`：普通用户安装版，可选择安装目录。
+- `E:\\ai\\architecture-manager\\release\\Architecture-Manager-0.2.1-portable-x64.exe`：便携版，不写系统安装项，适合先试用。
+- `E:\\ai\\architecture-manager\\release\\Architecture-Manager-0.2.1-setup-x64.exe`：普通用户安装版，可选择安装目录。
 
-如果打开后只看到空白窗口，请确认运行的是 `release/` 中的 0.2.0 包。启动后应显示“架构管理台”和“选择工作区”。
+如果打开后只看到空白窗口，请确认运行的是 `release/` 中的 0.2.1 包。启动后应显示“架构管理台”和“选择工作区”。
 
-0.1.0 发行包的 SHA-256 记录在 `E:\ai\codex\runtime\maintenance\20260926-manager-ui-smoke\` 的 P6 回读中。当前管理台仍只对用户明确确认的计划执行写入；软件启动、外网访问、提权和凭据引用也都保留人工确认边界。
+0.1.x 清理历史见 `E:\ai\versions\架构管理台旧发行包清理表-20260928.md`。当前管理台只对用户明确确认的计划执行写入；软件启动、外网访问、提权和凭据引用仍保留人工确认边界。
 
 ## 开发和验证
 
-### 源码模块边界（0.2.0）
+### 源码模块边界（0.2.1）
 
 源码按依赖方向分层：`renderer/` 只负责界面，`app/api.mjs` 是 IPC 使用的应用层门面，领域扫描与计划模块负责业务规则，`transactions.mjs` 只暴露稳定事务 API；事务公共内核位于 `transactions/kernel.mjs`，无副作用的哈希与路径校验位于 `core/`。`core/` 和事务内核不依赖 Electron 或 renderer。后续模块替换先在门面与边界测试中验证，避免改动一处扩散到所有 IPC 注册。
 

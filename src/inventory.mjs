@@ -2,10 +2,11 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { homedir } from 'node:os';
 import { listSoftware } from './software.mjs';
+import { softwareConnectorStatus } from './software-publish.mjs';
 import { inspectPlatformConnection } from './platform-check.mjs';
-import { latestStableVersion } from './core/versions.mjs';
+import { latestStableVersion, sortVersions } from './core/versions.mjs';
+import { localViewPath } from './core/paths.mjs';
 import { inspectGit } from './git.mjs';
 import { documentKind, EXTRA_DOCUMENTS, UPDATE_LOG_PATH } from './documents.mjs';
 
@@ -28,7 +29,8 @@ export const FORMAL_TOP_LEVEL_DIRECTORIES = [
   'zcode'
 ];
 
-export const PLATFORM_IDS = ['codex', 'dsh', 'workbuddy', 'zcode', 'doubao', 'qoder'];
+export { PLATFORM_IDS } from './core/platforms.mjs';
+import { PLATFORM_IDS } from './core/platforms.mjs';
 export const SHARED_REPOSITORIES = ['tool', 'agent', 'software'];
 
 function asPosixPath(value) {
@@ -48,12 +50,6 @@ function normalizeRoot(root) {
 
 function relativePath(root, target) {
   return asPosixPath(relative(root, target));
-}
-
-function localViewPath(root) {
-  const key = createHash('sha256').update(root, 'utf8').digest('hex').slice(0, 24);
-  const base = process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local');
-  return join(base, 'ArchitectureManager', 'views', `${key}.json`);
 }
 
 function readLocalView(root) {
@@ -107,7 +103,7 @@ function listReleasePointers(root, repository) {
       ? readdirSync(versionsRoot, { withFileTypes: true })
           .filter((versionEntry) => versionEntry.isDirectory())
           .map((versionEntry) => versionEntry.name)
-          .sort()
+          .sort(sortVersions)
       : [];
     pointers.push({ ...pointer, resourceId: entry.name, availableVersions, latestStableVersion: latestStableVersion(availableVersions) });
   }
@@ -179,7 +175,7 @@ export function scanWorkspace(workspaceRoot) {
   const localView = readLocalView(root);
   const platforms = PLATFORM_IDS.map((id) => {
     const inspected = inspectPlatformDirectory(root, id);
-    return { ...inspected, connection: inspectPlatformConnection({ workspaceRoot: root, platformId: id }), enabled: localView.enabled[id] !== false };
+    return { ...inspected, connection: inspectPlatformConnection({ workspaceRoot: root, platformId: id }), softwareConnector: softwareConnectorStatus(root, id), enabled: localView.enabled[id] !== false };
   });
   const versionsRoot = join(root, 'versions');
   const architectureDocuments = existsSync(versionsRoot)
@@ -204,7 +200,10 @@ export function scanWorkspace(workspaceRoot) {
   const toolRegistryPath = join(root, 'tool', 'registry.json');
   const agentRegistry = safeReadJson(agentRegistryPath);
   const toolRegistry = safeReadJson(toolRegistryPath);
-  if (agentRegistry.ok && Array.isArray(agentRegistry.value?.agents)) agents.push(...agentRegistry.value.agents);
+  if (agentRegistry.ok && Array.isArray(agentRegistry.value?.agents)) agents.push(...agentRegistry.value.agents.map((entry) => {
+    const pointer = safeReadJson(join(root, 'agent', entry.id, 'current.json'));
+    return { ...entry, registryVersion: entry.version || null, currentVersion: pointer.ok ? pointer.value?.version || null : null };
+  }));
   if (toolRegistry.ok && Array.isArray(toolRegistry.value?.skills)) skills.push(...toolRegistry.value.skills);
 
   return {

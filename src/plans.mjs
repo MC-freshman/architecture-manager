@@ -9,6 +9,16 @@ export function assertPublishedVersion(workspaceRoot, repository, resourceId, ve
   if (!existsSync(release) || !statSync(release).isDirectory() || !existsSync(sums) || !statSync(sums).isFile()) throw new Error('TARGET_VERSION_NOT_FROZEN');
 }
 
+export function validatePointerTransition({ workspaceRoot, repository, resourceId, currentVersion, targetVersion, availableVersions = [] }) {
+  if (!REPOSITORIES.has(repository)) throw new Error('INVALID_SHARED_REPOSITORY');
+  if (typeof resourceId !== 'string' || !RESOURCE_ID.test(resourceId)) throw new Error('INVALID_RESOURCE_ID');
+  if (typeof currentVersion !== 'string' || !SEMVER.test(currentVersion)) throw new Error('INVALID_CURRENT_VERSION');
+  if (typeof targetVersion !== 'string' || !SEMVER.test(targetVersion)) throw new Error('INVALID_TARGET_VERSION');
+  if (currentVersion === targetVersion) throw new Error('NO_CHANGE');
+  if (!Array.isArray(availableVersions) || !availableVersions.includes(targetVersion)) throw new Error('TARGET_VERSION_UNAVAILABLE');
+  assertPublishedVersion(workspaceRoot, repository, resourceId, targetVersion);
+}
+
 function basePlan(kind, workspaceRoot, now) {
   return {
     schema: 'architecture-manager-plan/v1',
@@ -41,13 +51,7 @@ export function buildPlatformViewPlan({ workspaceRoot, platformId, currentEnable
 }
 
 export function buildResourcePointerPlan({ workspaceRoot, repository, resourceId, currentVersion, targetVersion, availableVersions = [], baselineSha256 = null, now = new Date().toISOString() }) {
-  if (!REPOSITORIES.has(repository)) throw new Error('INVALID_SHARED_REPOSITORY');
-  if (typeof resourceId !== 'string' || !RESOURCE_ID.test(resourceId)) throw new Error('INVALID_RESOURCE_ID');
-  if (typeof currentVersion !== 'string' || !SEMVER.test(currentVersion)) throw new Error('INVALID_CURRENT_VERSION');
-  if (typeof targetVersion !== 'string' || !SEMVER.test(targetVersion)) throw new Error('INVALID_TARGET_VERSION');
-  if (currentVersion === targetVersion) throw new Error('NO_CHANGE');
-  if (!Array.isArray(availableVersions) || !availableVersions.includes(targetVersion)) throw new Error('TARGET_VERSION_UNAVAILABLE');
-  assertPublishedVersion(workspaceRoot, repository, resourceId, targetVersion);
+  validatePointerTransition({ workspaceRoot, repository, resourceId, currentVersion, targetVersion, availableVersions });
   const plan = basePlan('resource-pointer', workspaceRoot, now);
   plan.target = { repository, resourceId, currentVersion, targetVersion, baselineSha256 };
   plan.steps.push({

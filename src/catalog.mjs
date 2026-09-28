@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, realpathSync, statSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -107,23 +107,43 @@ function requireUnreferenced(root, kind, id, entry) {
   const ids = kind === 'skill'
     ? [id, ...(readJson(safeWorkspacePath(root, `tool/${entry.path}`))?.skills || []).map((item) => item.id)]
     : [id];
-  const patterns = ids.map((value) => new RegExp(`(^|[^A-Za-z0-9._-])${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^A-Za-z0-9._-])`));
+  const referenceKeys = kind === 'agent' ? new Set(['agent', 'agents', 'agentId', 'worker', 'workers', 'outputWorker', 'delegateAgent', 'subagent']) : new Set(['skill', 'skills', 'skillId', 'skillIds']);
+  const named = (value) => ids.some((target) => value === target || value.startsWith(`${kind}:${target}@`) || value === `${kind}:${target}`);
+  function hasStructuredReference(node, key = '') {
+    if (typeof node === 'string') return referenceKeys.has(key) && named(node);
+    if (Array.isArray(node)) return node.some((item) => hasStructuredReference(item, key));
+    if (!node || typeof node !== 'object') return false;
+    if (referenceKeys.has(key) && Object.keys(node).some(named)) return true;
+    return Object.entries(node).some(([next, value]) => hasStructuredReference(value, next));
+  }
+  function mentionsReference(path) {
+    const text = readFileSync(path, 'utf8');
+    try { return hasStructuredReference(JSON.parse(text)); }
+    catch {
+      return text.split(/\r?\n/).some((line) => {
+        const match = /^\s*(?:-\s*)?([A-Za-z][A-Za-z0-9_-]*)\s*:\s*(.*)$/.exec(line);
+        if (!match || !referenceKeys.has(match[1])) return false;
+        return match[2].replace(/[\[\],]/g, ' ').split(/\s+/).some((token) => named(token.replace(/^['"]|['"]$/g, '')));
+      });
+    }
+  }
   const hits = [];
-  function visit(dir) {
-    if (!existsSync(dir)) return;
-    for (const item of readdirSync(dir, { withFileTypes: true })) {
-      const path = join(dir, item.name);
-      if (item.isSymbolicLink()) continue;
-      if (kind === 'agent' && path === join(root, 'agent', id)) continue;
-      if (item.isDirectory() && !['.git', 'node_modules', '_registry'].includes(item.name)) visit(path);
-      else if (item.isFile() && ['manifest.json', 'tool-lock.json', 'workflow.yaml'].includes(item.name)) {
-        const text = readFileSync(path, 'utf8');
-        if (patterns.some((pattern) => pattern.test(text))) hits.push(toRelative(root, path));
+  for (const [repo, key, names] of [['agent', 'agents', ['manifest.json', 'tool-lock.json']], ['tool', 'workflows', ['manifest.json', 'workflow.yaml']]]) {
+    const registry = readJson(join(root, repo, 'registry.json'));
+    for (const resource of registry?.[key] || []) {
+      if (!resource?.id || resource.enabled === false || resource.deprecated === true) continue;
+      if (kind === 'agent' && repo === 'agent' && resource.id === id) continue;
+      const current = readJson(join(root, repo, resource.id, 'current.json'));
+      if (!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(current?.version || '')) continue;
+      const release = safeWorkspacePath(root, `${repo}/${resource.id}/versions/${current.version}`);
+      for (const name of names) {
+        const path = join(release, name);
+        if (!existsSync(path) || !statSync(path).isFile()) continue;
+        if (mentionsReference(path)) hits.push(toRelative(root, path));
       }
     }
   }
-  for (const repo of ['agent', 'tool']) visit(join(root, repo));
-  if (hits.length) throw new Error(`RESOURCE_REFERENCED: ${hits.slice(0, 5).join(', ')}${hits.length > 5 ? ` (+${hits.length - 5})` : ''}`);
+  if (hits.length) throw new Error(`RESOURCE_REFERENCED: ${hits.join(', ')}`);
 }
 
 export function buildRegistryPlan({ workspaceRoot, kind, action, id, baselineSha256, entry = {}, now = new Date().toISOString() }) {

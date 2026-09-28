@@ -9,4 +9,5 @@ export { applyPlan, verifyPlanTarget } from '../transactions.mjs';
 export { runPlatformCheck } from '../platform-check.mjs';
 export { buildSoftwareImportPlan } from '../software-intake.mjs';
 export { buildSoftwareRecipePlan } from '../software-publish.mjs';
+export { buildSoftwareRevertPlan } from '../software-recovery.mjs';
 

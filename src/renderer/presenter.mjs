@@ -4,14 +4,15 @@ export const PLAN_WRITE_KINDS = [
   'platform-view',
   'registry-edit',
   'integration-config',
-  'integration-pointer',
   'integration-registry',
   'software-import',
-  'software-recipe-publish'
+  'software-recipe-publish',
+  'software-revert'
 ];
 
 export function friendlyError(error) {
   const code = String(error?.message ?? error);
+  const [key, ...details] = code.split(':');
   const hints = {
     DOCUMENT_BASELINE_MISMATCH: '文档在读取后发生了变化，请重新打开文档再编辑。',
     EXTERNAL_CHANGE_DETECTED: '目标文件已被其他程序修改，管理台已阻止覆盖，请重新扫描。',
@@ -26,8 +27,13 @@ export function friendlyError(error) {
     PLATFORM_PATH_OUTSIDE_WORKSPACE: '平台目录必须位于当前工作区内。',
     SOFTWARE_BODY_PATH_NOT_FOUND: '软件配方声明的本体路径不存在。',
     TRANSACTION_TARGET_OUTSIDE_WORKSPACE: '目标路径不在当前工作区内，操作已阻止。',
-    TRANSACTION_KIND_UNSUPPORTED: '此类计划暂时只能查看，尚未提供安全执行器。'
+    TRANSACTION_KIND_UNSUPPORTED: '此类计划暂时只能查看，尚未提供安全执行器。',
+    RESOURCE_REFERENCED: '仍有现行启用资源引用它，停用或移除已阻止。下方列出全部引用文件',
+    NO_CHANGE: '目标版本与当前默认版本相同，无需切换。',
+    TARGET_VERSION_NOT_FROZEN: '目标版本缺少发布封条 SHA256SUMS，不能切换。',
+    SOFTWARE_CONNECTOR_NOT_CONFIGURED: '所选平台仍未绑定新版软件连接器，请换选已配置的平台或先完成平台接线。',
+    INTEGRATION_BASELINE_MISMATCH: '目标在预览后已变化，请重新读取目标再生成计划。'
   };
-  return hints[code] ? `${hints[code]}（${code}）` : code;
+  return hints[key] ? `${hints[key]}（${key}）${details.length ? `\n${details.join(':').trim()}` : ''}` : code;
 }
 

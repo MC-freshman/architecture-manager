@@ -18,6 +18,7 @@ import { inspectPlatformConnection, runPlatformCheck } from '../src/platform-che
 import { latestStableVersion } from '../src/core/versions.mjs';
 import { buildSoftwareImportPlan } from '../src/software-intake.mjs';
 import { applySoftwareRecipe, buildSoftwareRecipePlan, listSoftwareIntakes, verifySoftwareRecipe } from '../src/software-publish.mjs';
+import { buildSoftwareRevertPlan, listSoftwareRecoveries } from '../src/software-recovery.mjs';
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'architecture-manager-'));
@@ -123,6 +124,26 @@ test('reads full agent/skill entries and applies a guarded registry plan', () =>
   }
 });
 
+test('registry guard ignores obsolete releases but blocks the active release', () => {
+  const root = fixture();
+  const agentRegistry = join(root, 'agent', 'registry.json');
+  const oldRelease = join(root, 'tool', 'demo', 'versions', '1.0.0');
+  const activeRelease = join(root, 'tool', 'demo', 'versions', '1.1.0');
+  mkdirSync(oldRelease, { recursive: true });
+  mkdirSync(activeRelease, { recursive: true });
+  writeFileSync(join(root, 'tool', 'demo', 'current.json'), JSON.stringify({ id: 'demo', version: '1.1.0' }));
+  writeFileSync(join(root, 'tool', 'registry.json'), JSON.stringify({ workflows: [{ id: 'demo', enabled: true }] }));
+  writeFileSync(join(oldRelease, 'workflow.yaml'), 'agent: game-builder\n');
+  writeFileSync(join(activeRelease, 'workflow.yaml'), 'agent: other-agent\n');
+  writeFileSync(agentRegistry, JSON.stringify({ agents: [{ id: 'game-builder', enabled: true }] }));
+  try {
+    const baselineSha256 = createHash('sha256').update(readFileSync(agentRegistry, 'utf8')).digest('hex');
+    assert.doesNotThrow(() => buildRegistryPlan({ workspaceRoot: root, kind: 'agent', action: 'disable', id: 'game-builder', baselineSha256 }));
+    writeFileSync(join(activeRelease, 'workflow.yaml'), 'agent: game-builder\n');
+    assert.throws(() => buildRegistryPlan({ workspaceRoot: root, kind: 'agent', action: 'disable', id: 'game-builder', baselineSha256 }), /RESOURCE_REFERENCED:.*1\.1\.0/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('classifies corrupt current.json instead of treating it as green', () => {
   const root = fixture();
   try {
@@ -208,7 +229,7 @@ test('protects top-level requirements and creates a hashed document plan', () =>
   assert.equal(plan.steps[0].oldSha256, baselineSha256);
 });
 
-test('lists registered software and creates a provider-only launch plan', () => {
+test('lists registered software and makes absent launch executor explicit', () => {
   const root = fixture();
   try {
     const software = listSoftware(root);
@@ -217,7 +238,7 @@ test('lists registered software and creates a provider-only launch plan', () => 
     const plan = buildSoftwareLaunchPlan({ workspaceRoot: root, softwareId: 'demo', mode: 'launch', now: '2026-09-25T00:00:00.000Z' });
     assert.equal(plan.kind, 'software-action');
     assert.equal(plan.writePerformed, false);
-    assert.equal(plan.steps[0].dispatch, 'registered-provider-only');
+    assert.equal(plan.steps[0].dispatch, 'unavailable');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -225,17 +246,30 @@ test('lists registered software and creates a provider-only launch plan', () => 
 
 test('imports a new software file into one platform with a full backup and real restore drill', () => {
   const root = fixture();
+  const auditRoot = join(root, 'audit');
   const source = join(root, 'downloaded-tool.exe');
   writeFileSync(source, 'harmless-test-body');
   try {
     const plan = buildSoftwareImportPlan({ workspaceRoot: root, platformId: 'codex', softwareId: 'new-tool', sourcePath: source, intakeKind: 'portable-file', now: '2026-09-28T12:00:00.000Z' });
     assert.equal(plan.writePerformed, false);
-    const result = applyPlan({ plan });
+    const progress = [];
+    const result = applyPlan({ plan, auditRoot, onProgress: (item) => progress.push(item) });
     assert.equal(result.status, 'staged-awaiting-recipe');
     assert.equal(result.restored, true);
+    assert.equal(progress.at(-1).stage, 'restore-and-body');
+    assert.equal(existsSync(result.checkpointPath), true);
+    assert.match(readFileSync(join(auditRoot, 'events.jsonl'), 'utf8'), /software-import/);
     assert.equal(verifyPlanTarget({ plan }).ok, true);
     assert.equal(readFileSync(join(root, 'codex', 'runtime', 'software', 'new-tool', 'downloaded-tool.exe'), 'utf8'), 'harmless-test-body');
     assert.equal(existsSync(join(root, 'software', 'new-tool')), false);
+    const recovery = listSoftwareRecoveries({ workspaceRoot: root, auditRoot })[0];
+    const revertPlan = buildSoftwareRevertPlan({ workspaceRoot: root, checkpointPath: recovery.checkpointPath, auditRoot });
+    const reverted = applyPlan({ plan: revertPlan, auditRoot });
+    assert.equal(reverted.status, 'reverted');
+    assert.equal(verifyPlanTarget({ plan: revertPlan }).ok, true);
+    assert.equal(existsSync(join(root, 'codex', 'runtime', 'software', 'new-tool')), false);
+    assert.equal(existsSync(result.backup), true);
+    assert.equal(existsSync(reverted.movedTo), true);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -251,6 +285,19 @@ test('software import refuses changed source bytes before any copy', () => {
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test('software import checkpoint interruption leaves no body or backup', () => {
+  const root = fixture();
+  const source = join(root, 'downloaded-tool.exe');
+  writeFileSync(source, 'body');
+  try {
+    const plan = buildSoftwareImportPlan({ workspaceRoot: root, platformId: 'codex', softwareId: 'new-tool', sourcePath: source, intakeKind: 'portable-file' });
+    assert.throws(() => applyPlan({ plan, auditRoot: join(root, 'audit'), failAfterCheckpoint: true }), /SIMULATED_INTERRUPT/);
+    assert.equal(existsSync(plan.target.path), false);
+    assert.equal(existsSync(plan.target.backup), false);
+    assert.match(readFileSync(join(root, 'audit', 'events.jsonl'), 'utf8'), /interrupted-before-write/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test('publishes only a probed CLI version capability and binds its platform connector', () => {
   const root = fixture();
   const source = join(root, 'my-tool.exe');
@@ -260,14 +307,18 @@ test('publishes only a probed CLI version capability and binds its platform conn
   writeFileSync(join(root, 'codex', 'bridge', 'runner-config.json'), JSON.stringify({ platform: 'codex', softwareGateway: join(root, 'software', '_connector', 'versions', '1.0.7', 'connector.py'), softwareGatewayConfig: join(root, 'codex', 'bridge', 'software-gateway-config.json') }));
   const probeVersion = () => 'my-tool 1.2.3';
   try {
-    applyPlan({ plan: buildSoftwareImportPlan({ workspaceRoot: root, platformId: 'codex', softwareId: 'my-tool', sourcePath: source, intakeKind: 'portable-file', now: '2026-09-28T12:00:00.000Z' }) });
+    applyPlan({ plan: buildSoftwareImportPlan({ workspaceRoot: root, platformId: 'codex', softwareId: 'my-tool', sourcePath: source, intakeKind: 'portable-file', now: '2026-09-28T12:00:00.000Z' }), auditRoot: join(root, 'audit') });
     assert.equal(listSoftwareIntakes({ workspaceRoot: root, platformId: 'codex' })[0].restored, true);
     const plan = buildSoftwareRecipePlan({ workspaceRoot: root, platformId: 'codex', softwareId: 'my-tool', bodyName: 'my-tool.exe', displayName: 'My Tool', upstreamVersion: '1.2.3', license: 'unknown', now: '2026-09-28T12:30:00.000Z' }, { probeVersion });
     assert.equal(plan.writePerformed, false);
     assert.equal(existsSync(join(root, 'software', 'my-tool')), false);
-    const applied = applySoftwareRecipe({ plan }, { probeVersion, verifyPublished: () => ({ connectorDispatchable: true, singleCellReached: true, issues: [] }) });
+    assert.throws(() => applySoftwareRecipe({ plan }, { probeVersion, auditRoot: join(root, 'audit'), failAfterCheckpoint: true }), /SIMULATED_INTERRUPT/);
+    assert.equal(existsSync(join(root, 'software', 'my-tool')), false);
+    const applied = applySoftwareRecipe({ plan }, { probeVersion, auditRoot: join(root, 'audit'), verifyPublished: () => ({ connectorDispatchable: true, singleCellReached: true, issues: [] }) });
     assert.equal(applied.status, 'published-version-only');
     assert.equal(applied.check.singleCellReached, true);
+    assert.equal(existsSync(applied.checkpointPath), true);
+    assert.match(readFileSync(join(root, 'audit', 'events.jsonl'), 'utf8'), /software-recipe-publish/);
     assert.equal(verifySoftwareRecipe({ plan }).ok, true);
     assert.equal(JSON.parse(readFileSync(join(root, 'software', 'my-tool', 'versions', '1.0.0', 'capabilities.snapshot.json'), 'utf8')).frozen, true);
     assert.equal(JSON.parse(readFileSync(join(root, 'software', 'my-tool', 'current.json'), 'utf8')).version, '1.0.0');
@@ -278,6 +329,13 @@ test('publishes only a probed CLI version capability and binds its platform conn
       assert.equal(check.status, 0, check.stderr);
       assert.deepEqual(JSON.parse(check.stdout), []);
     }
+    const recovery = listSoftwareRecoveries({ workspaceRoot: root, auditRoot: join(root, 'audit') }).find((item) => item.action === 'software-recipe-publish');
+    const revertPlan = buildSoftwareRevertPlan({ workspaceRoot: root, checkpointPath: recovery.checkpointPath, auditRoot: join(root, 'audit') });
+    const reverted = applyPlan({ plan: revertPlan, auditRoot: join(root, 'audit') });
+    assert.equal(reverted.status, 'reverted');
+    assert.equal(verifyPlanTarget({ plan: revertPlan }).ok, true);
+    assert.equal(existsSync(join(root, 'software', 'my-tool', 'versions', '1.0.0')), true);
+    assert.equal(JSON.parse(readFileSync(join(root, 'software', 'registry.json'), 'utf8')).software.find((row) => row.id === 'my-tool').enabled, false);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -290,9 +348,9 @@ test('a published recipe stays pending when connector verification cannot comple
   writeFileSync(join(root, 'codex', 'bridge', 'runner-config.json'), JSON.stringify({ platform: 'codex', softwareGateway: join(root, 'software', '_connector', 'versions', '1.0.7', 'connector.py'), softwareGatewayConfig: join(root, 'codex', 'bridge', 'software-gateway-config.json') }));
   const probeVersion = () => 'my-tool 1.2.3';
   try {
-    applyPlan({ plan: buildSoftwareImportPlan({ workspaceRoot: root, platformId: 'codex', softwareId: 'my-tool', sourcePath: source, intakeKind: 'portable-file' }) });
+    applyPlan({ plan: buildSoftwareImportPlan({ workspaceRoot: root, platformId: 'codex', softwareId: 'my-tool', sourcePath: source, intakeKind: 'portable-file' }), auditRoot: join(root, 'audit') });
     const plan = buildSoftwareRecipePlan({ workspaceRoot: root, platformId: 'codex', softwareId: 'my-tool', bodyName: 'my-tool.exe', displayName: 'My Tool', upstreamVersion: '1.2.3', license: 'unknown' }, { probeVersion });
-    const result = applySoftwareRecipe({ plan }, { probeVersion, verifyPublished: () => { throw new Error('connector unavailable'); } });
+    const result = applySoftwareRecipe({ plan }, { probeVersion, auditRoot: join(root, 'audit'), verifyPublished: () => { throw new Error('connector unavailable'); } });
     assert.equal(result.status, 'published-pending-verification');
     assert.equal(result.check.connectorDispatchable, false);
     assert.equal(verifySoftwareRecipe({ plan }).ok, true);
@@ -438,7 +496,7 @@ test('plans and applies GUI integration for platform config and shared resource 
       targetVersion: '1.1.0',
       availableVersions: ['1.0.0', '1.1.0']
     });
-    assert.equal(pointerPlan.kind, 'integration-pointer');
+    assert.equal(pointerPlan.kind, 'resource-pointer');
     assert.equal(applyPlan({ plan: pointerPlan, auditRoot }).status, 'applied');
     assert.equal(JSON.parse(readFileSync(join(root, 'software', 'demo', 'current.json'), 'utf8')).version, '1.1.0');
     assert.equal(verifyPlanTarget({ plan: pointerPlan }).ok, true);

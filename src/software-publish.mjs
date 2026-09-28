@@ -2,8 +2,10 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import { defaultAuditRoot } from './core/paths.mjs';
+import { makeId, saveCheckpoint, writeAudit } from './transactions/kernel.mjs';
 
-const PLATFORMS = new Set(['codex', 'dsh', 'workbuddy', 'zcode', 'doubao', 'qoder']);
+import { isFormalPlatform } from './core/platforms.mjs';
 const SOFTWARE_ID = /^[a-z0-9][a-z0-9._-]*$/;
 const FLAGS = new Set(['--version', '-V', '-v']);
 function sha(value) { return createHash('sha256').update(value).digest('hex'); }
@@ -24,6 +26,14 @@ function runnerConfig(root, platformId) {
   const gatewayPath = resolve(gateway);
   if (!inside(join(root, 'software', '_connector', 'versions'), gatewayPath)) throw new Error('SOFTWARE_CONNECTOR_NOT_CONFIGURED');
   return { path: gatewayConfigPath, gatewayPath, runnerPath: path, text: readFileSync(gatewayConfigPath, 'utf8'), value: gatewayConfig };
+}
+export function softwareConnectorStatus(root, platformId) {
+  try {
+    const connector = runnerConfig(root, platformId);
+    return { ready: true, gatewayPath: connector.gatewayPath, configPath: connector.path };
+  } catch (error) {
+    return { ready: false, reason: String(error?.message || error) };
+  }
 }
 function latestBackup(root, platformId, softwareId) {
   const parent = join(root, 'inbox', 'backup', platformId, softwareId);
@@ -60,7 +70,7 @@ function probe(body, flag, version) {
 
 export function listSoftwareIntakes({ workspaceRoot, platformId }) {
   const root = resolve(workspaceRoot);
-  if (!PLATFORMS.has(platformId)) throw new Error('UNKNOWN_PLATFORM_ID');
+  if (!isFormalPlatform(platformId)) throw new Error('UNKNOWN_PLATFORM_ID');
   const base = join(root, platformId, 'runtime', 'software');
   if (!existsSync(base)) return [];
   return readdirSync(base, { withFileTypes: true }).filter((entry) => entry.isDirectory() && SOFTWARE_ID.test(entry.name)).map((entry) => {
@@ -88,7 +98,7 @@ function releaseFiles({ softwareId, displayName, upstreamVersion, license, versi
 
 export function buildSoftwareRecipePlan({ workspaceRoot, platformId, softwareId, bodyName, displayName, upstreamVersion, license, versionFlag = '--version', now = new Date().toISOString() }, { probeVersion = probe } = {}) {
   const root = resolve(workspaceRoot);
-  if (!PLATFORMS.has(platformId) || !SOFTWARE_ID.test(softwareId) || typeof upstreamVersion !== 'string' || !upstreamVersion.trim() || upstreamVersion.length > 80 || /[\r\n]/.test(upstreamVersion) || !FLAGS.has(versionFlag) || typeof displayName !== 'string' || !displayName.trim() || typeof license !== 'string' || !license.trim()) throw new Error('INVALID_SOFTWARE_RECIPE_INPUT');
+  if (!isFormalPlatform(platformId) || !SOFTWARE_ID.test(softwareId) || typeof upstreamVersion !== 'string' || !upstreamVersion.trim() || upstreamVersion.length > 80 || /[\r\n]/.test(upstreamVersion) || !FLAGS.has(versionFlag) || typeof displayName !== 'string' || !displayName.trim() || typeof license !== 'string' || !license.trim()) throw new Error('INVALID_SOFTWARE_RECIPE_INPUT');
   const version = '1.0.0';
   const imported = importedBody(root, platformId, softwareId, bodyName);
   if (imported.manifest.intakeKind === 'installer') throw new Error('INSTALLER_NOT_INSTALLED');
@@ -148,10 +158,10 @@ function checkPublished(root, target, connector) {
   return result;
 }
 
-export function applySoftwareRecipe({ plan }, { probeVersion = probe, verifyPublished = checkPublished } = {}) {
+export function applySoftwareRecipe({ plan }, { probeVersion = probe, verifyPublished = checkPublished, actor = 'local-user', auditRoot = defaultAuditRoot(), now = new Date().toISOString(), onProgress = () => {}, failAfterCheckpoint = false } = {}) {
   if (plan?.kind !== 'software-recipe-publish') throw new Error('INVALID_SOFTWARE_RECIPE_PLAN');
   const { workspaceRoot: root, target, baseline, payload } = plan;
-  if (!PLATFORMS.has(target.platformId) || !SOFTWARE_ID.test(target.softwareId) || !FLAGS.has(target.versionFlag) || target.version !== '1.0.0' || target.path !== join(root, 'software', target.softwareId, 'versions', target.version)) throw new Error('INVALID_SOFTWARE_RECIPE_PLAN');
+  if (!isFormalPlatform(target.platformId) || !SOFTWARE_ID.test(target.softwareId) || !FLAGS.has(target.versionFlag) || target.version !== '1.0.0' || target.path !== join(root, 'software', target.softwareId, 'versions', target.version)) throw new Error('INVALID_SOFTWARE_RECIPE_PLAN');
   const imported = importedBody(root, target.platformId, target.softwareId, target.bodyName);
   if (imported.body !== target.bodyPath || sha(readFileSync(imported.body)) !== baseline.bodySha256) throw new Error('SOFTWARE_BODY_CHANGED');
   const probeOutput = probeVersion(imported.body, target.versionFlag, target.upstreamVersion);
@@ -170,6 +180,12 @@ export function applySoftwareRecipe({ plan }, { probeVersion = probe, verifyPubl
   if (existsSync(target.path)) throw new Error('SOFTWARE_ALREADY_REGISTERED');
   const expected = releaseFiles({ softwareId: target.softwareId, displayName: target.displayName, upstreamVersion: target.upstreamVersion, license: target.license, version: target.version, bodyName: target.bodyName, bodyRows: imported.rows, flag: target.versionFlag, probeOutput, now: plan.generatedAt });
   if (JSON.stringify(expected) !== JSON.stringify(payload.files)) throw new Error('PLAN_PAYLOAD_MISMATCH');
+  const transactionId = makeId(plan, now);
+  const checkpoint = saveCheckpoint(auditRoot, transactionId, json({ schema: 'architecture-manager-software-publish-checkpoint/v1', softwareId: target.softwareId, platformId: target.platformId, bodyPath: target.bodyPath, registryPath, oldRegistry, connectorPath: target.connectorConfigPath, oldConnector, pointerPath: join(root, 'software', target.softwareId, 'current.json'), releasePath: target.path, releaseSumsSha256: sha(payload.files.SHA256SUMS), createdNewRelease: true }));
+  if (failAfterCheckpoint) {
+    const audit = writeAudit({ auditRoot, transactionId, plan, actor, action: 'software-recipe-publish', status: 'interrupted-before-write', target: target.path, checkpointSha256: checkpoint.sha256, checkpointPath: checkpoint.path, error: 'SIMULATED_INTERRUPT', now });
+    throw Object.assign(new Error('SIMULATED_INTERRUPT'), { audit, checkpointPath: checkpoint.path });
+  }
   const platformRuntime = join(root, target.platformId, 'runtime');
   mkdirSync(platformRuntime, { recursive: true });
   const stage = mkdtempSync(join(platformRuntime, '.software-release-stage-'));
@@ -180,10 +196,11 @@ export function applySoftwareRecipe({ plan }, { probeVersion = probe, verifyPubl
   let pointerCreated = false;
   let releaseCreated = false;
   try {
-    for (const [name, content] of Object.entries(payload.files)) {
+    for (const [index, [name, content]] of Object.entries(payload.files).entries()) {
       const file = join(stage, name);
       mkdirSync(dirname(file), { recursive: true });
       writeFileSync(file, content, { flag: 'wx' });
+      onProgress({ stage: 'release-files', path: name, filesDone: index + 1, filesTotal: Object.keys(payload.files).length });
     }
     for (const [name, content] of Object.entries(payload.files)) if (sha(readFileSync(join(stage, name))) !== sha(content)) throw new Error('SOFTWARE_RELEASE_HASH_MISMATCH');
     mkdirSync(releaseParent, { recursive: true });
@@ -200,7 +217,9 @@ export function applySoftwareRecipe({ plan }, { probeVersion = probe, verifyPubl
     let check;
     try { check = verifyPublished(root, target, connector); }
     catch (error) { check = { connectorDispatchable: false, singleCellReached: false, issues: [`发布后检查失败：${String(error.message).slice(0, 500)}`] }; }
-    return { ...verification, status: check.connectorDispatchable && check.singleCellReached ? 'published-version-only' : 'published-pending-verification', check, writePerformed: true };
+    const status = check.connectorDispatchable && check.singleCellReached ? 'published-version-only' : 'published-pending-verification';
+    const audit = writeAudit({ auditRoot, transactionId, plan, actor, action: 'software-recipe-publish', status, target: target.path, newSha256: sha(payload.files.SHA256SUMS), checkpointSha256: checkpoint.sha256, checkpointPath: checkpoint.path, writePerformed: true, now });
+    return { ...verification, status, check, writePerformed: true, audit, checkpointPath: checkpoint.path, transactionId };
   } catch (error) {
     if (connectorWritten) atomicText(target.connectorConfigPath, oldConnector, `${plan.planId}-restore`);
     if (registryWritten) atomicText(registryPath, oldRegistry, `${plan.planId}-restore`);
@@ -211,7 +230,8 @@ export function applySoftwareRecipe({ plan }, { probeVersion = probe, verifyPubl
         try { rmdirSync(emptyParent); } catch { /* Preserve a nonempty directory. */ }
       }
     }
-    throw error;
+    const audit = writeAudit({ auditRoot, transactionId, plan, actor, action: 'software-recipe-publish', status: 'recovered-after-failure', target: target.path, checkpointSha256: checkpoint.sha256, checkpointPath: checkpoint.path, error: String(error?.message || error), now });
+    throw Object.assign(error, { audit, checkpointPath: checkpoint.path });
   } finally {
     if (existsSync(stage)) rmSync(stage, { recursive: true, force: true });
   }

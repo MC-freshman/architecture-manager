@@ -3,9 +3,9 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 
 const RESOURCE_KINDS = new Set(['tool', 'agent', 'software']);
-const PLATFORM_IDS = new Set(['codex', 'dsh', 'workbuddy', 'zcode', 'doubao', 'qoder']);
+import { isFormalPlatform } from './core/platforms.mjs';
+import { buildResourcePointerPlan } from './plans.mjs';
 const ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const SECRET_KEYS = /(password|passwd|secret|token|api[_-]?key|private[_-]?key|access[_-]?key)/i;
 
 function sha256(value) {
@@ -47,7 +47,7 @@ function readText(root, path) {
 
 function platformCandidates(root, platformId) {
   assertId(platformId, 'INVALID_PLATFORM_ID');
-  if (!PLATFORM_IDS.has(platformId)) throw new Error('UNKNOWN_PLATFORM_ID');
+  if (!isFormalPlatform(platformId)) throw new Error('UNKNOWN_PLATFORM_ID');
   const platformRoot = join(root, platformId);
   if (!existsSync(platformRoot) || !statSync(platformRoot).isDirectory()) return [];
   return [`${platformId}/bridge.json`];
@@ -228,17 +228,8 @@ export function buildIntegrationPlan({ workspaceRoot, kind, targetId, mode = 'co
     if (!path.endsWith('/current.json')) throw new Error('POINTER_TARGET_REQUIRED');
     const pointer = JSON.parse(current.content);
     const actualVersion = pointer?.version;
-    if (!SEMVER.test(String(actualVersion)) || !SEMVER.test(String(targetVersion))) throw new Error('INVALID_RESOURCE_VERSION');
-    if (actualVersion === targetVersion) throw new Error('NO_CHANGE');
-    if (!Array.isArray(availableVersions) || !availableVersions.includes(targetVersion)) throw new Error('TARGET_VERSION_UNAVAILABLE');
     if (baselineSha256 !== current.sha256) throw new Error('INTEGRATION_BASELINE_MISMATCH');
-    const versionRoot = join(root, kind, targetId, 'versions', targetVersion);
-    if (!existsSync(versionRoot) || !statSync(versionRoot).isDirectory() || !existsSync(join(versionRoot, 'SHA256SUMS'))) throw new Error('TARGET_VERSION_NOT_FROZEN');
-    const next = `${JSON.stringify({ ...pointer, version: targetVersion }, null, 2)}\n`;
-    const plan = basePlan('pointer', root, now);
-    plan.target = { kind, targetId, mode, path, currentVersion: actualVersion, targetVersion };
-    plan.steps.push({ operation: 'replace-current-pointer', target: path, oldSha256: current.sha256, newSha256: sha256(next), checkpoint: true });
-    return plan;
+    return buildResourcePointerPlan({ workspaceRoot: root, repository: kind, resourceId: targetId, currentVersion: actualVersion, targetVersion, availableVersions, baselineSha256: current.sha256, now });
   }
   if (mode !== 'registry') throw new Error('RESOURCE_MODE_REQUIRED');
   if (!path.endsWith('/registry.json')) throw new Error('REGISTRY_TARGET_REQUIRED');

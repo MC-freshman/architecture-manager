@@ -23,6 +23,7 @@ function App() {
   const [inventory, setInventory] = useState(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('请选择一个架构工作区开始只读扫描。');
+  const [transactionProgress, setTransactionProgress] = useState(null);
   const [showExcluded, setShowExcluded] = useState(false);
   const [planPreview, setPlanPreview] = useState(null);
   const [selectedDocument, setSelectedDocument] = useState(null);
@@ -48,6 +49,18 @@ function App() {
   const [integrationText, setIntegrationText] = useState('');
   const [integrationTargetVersion, setIntegrationTargetVersion] = useState('');
   const [platformSuggestion, setPlatformSuggestion] = useState(null);
+
+  useEffect(() => api.onTransactionProgress((progress) => setTransactionProgress(progress)), []);
+
+  useEffect(() => {
+    if (planPreview) document.getElementById('plan-preview')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [planPreview]);
+  useEffect(() => {
+    if (catalogDetail || skillDetail) document.querySelector('.catalog-detail:last-of-type')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [catalogDetail, skillDetail]);
+  useEffect(() => {
+    if (selectedDocument) document.querySelector('.editor-box')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [selectedDocument]);
 
   const scan = async (root) => {
     if (!root) return;
@@ -146,7 +159,7 @@ function App() {
   }, [workspace, integrationKind, integrationTargetId, integrationMode]);
 
   const reloadIntegrationTarget = async () => {
-    if (!workspace || !integrationTargetId || !integrationPath) return;
+    if (!workspace || !integrationTargetId || !integrationPath) { setMessage('请先选择接入对象和目标文件。'); return; }
     try {
       const detail = await api.readIntegrationTarget({ workspaceRoot: workspace, kind: integrationKind, targetId: integrationTargetId, relativePath: integrationPath });
       setIntegrationTarget(detail);
@@ -159,7 +172,7 @@ function App() {
   };
 
   const previewIntegration = async () => {
-    if (!workspace || !integrationTarget || !integrationPath) return;
+    if (!workspace || !integrationTarget || !integrationPath) { setMessage('接入目标尚未读到，请选择对象或重新读取目标。'); return; }
     try {
       const input = { workspaceRoot: workspace, kind: integrationKind, targetId: integrationTargetId, mode: integrationMode, relativePath: integrationPath, beforeText: integrationTarget.content, afterText: integrationText, baselineSha256: integrationTarget.sha256 };
       if (integrationMode === 'pointer') {
@@ -206,7 +219,7 @@ function App() {
   const addPlatformDirectory = async () => {
     if (!workspace) return;
     const selected = await api.selectDirectory();
-    if (!selected) return;
+    if (!selected) { setMessage('已取消选择平台目录，未生成计划。'); return; }
     const platformId = selected.split(/[\\/]/).filter(Boolean).pop();
     if (!inventory?.platforms?.some((item) => item.id === platformId)) {
       setMessage(`未识别的平台目录：${platformId}。请选择 codex、qoder、doubao、workbuddy、zcode 或 dsh 目录。`);
@@ -232,22 +245,23 @@ function App() {
     try {
       setCatalogDetail(await api.readCatalogEntry({ workspaceRoot: workspace, kind, id }));
       setSkillDetail(null); setSkillFilter('');
+      setMessage(`已打开 ${kind}/${id} 全部内容，可在当前面板下方查看。`);
     } catch (error) {
       setMessage(`读取${kind === 'agent' ? 'agent' : 'skill'}内容失败：${friendlyError(error)}`);
     }
   };
 
   const previewRegistryAction = async (kind, action, item = null) => {
-    if (!workspace || !inventory?.catalogRegistries?.[kind]?.sha256) return;
+    if (!workspace || !inventory?.catalogRegistries?.[kind]?.sha256) { setMessage('缺少 registry 基线哈希，请重新扫描工作区。'); return; }
     let id = item?.id;
     try {
       let entry = {};
       if (action === 'add') {
         const selected = await api.selectCatalog({ workspaceRoot: workspace, kind });
-        if (!selected) return;
+        if (!selected) { setMessage('已取消选择文件，未生成 registry 计划。'); return; }
         id = selected.id; entry = selected.entry;
       }
-      if (!id) return;
+      if (!id) { setMessage('所选资源缺少 ID，无法生成 registry 计划。'); return; }
       const plan = await api.previewRegistryPlan({ workspaceRoot: workspace, kind, action, id, entry, baselineSha256: inventory.catalogRegistries[kind].sha256 });
       setPlanPreview(plan);
       setPlanPayload({ afterText: plan.payload.afterText });
@@ -259,7 +273,7 @@ function App() {
 
   const previewResource = async (resource, selectedVersion = null) => {
     const target = selectedVersion || targetVersions[`${resource.repository}/${resource.resourceId}`] || (resource.latestStableVersion !== resource.version ? resource.latestStableVersion : null);
-    if (!target) return;
+    if (!target) { setMessage('请先选择目标版本。'); return; }
     try {
       const plan = await api.previewResourcePlan({
         workspaceRoot: workspace,
@@ -324,7 +338,7 @@ function App() {
       const plan = await api.previewSoftwarePlan({ workspaceRoot: workspace, softwareId: item.id, mode: 'launch' });
       setPlanPreview(plan);
       setPlanPayload(null);
-      setMessage(`已生成 ${item.id} 启动计划。尚未启动软件。`);
+      setMessage(`已列出 ${item.id} 的启动条件。当前管理台没有启动执行器，未启动软件。`);
     } catch (error) {
       setMessage(`软件启动计划被拒绝：${friendlyError(error)}`);
     }
@@ -334,7 +348,7 @@ function App() {
     try {
       const plan = await api.previewSoftwareImportPlan({ workspaceRoot: workspace, ...selection });
       setPlanPreview(plan); setPlanPayload(null);
-      setMessage(`已生成 ${selection.softwareId} 安置与备份计划：${plan.rows.length} 个文件；尚未复制。`);
+      setMessage(`已生成 ${selection.softwareId} 安置与备份计划：${plan.rows.length} 个文件，预计新增 ${Math.ceil((plan.estimatedAdditionalBytes || 0) / 1024 / 1024)} MiB（备份 + 本体，不含原下载文件）；尚未复制。`);
     } catch (error) { setMessage(`软件安置计划被拒绝：${friendlyError(error)}`); }
   };
 
@@ -356,6 +370,14 @@ function App() {
     } catch (error) {
       setMessage(`软件位置计划被拒绝：${friendlyError(error)}`);
     }
+  };
+
+  const previewSoftwareRevert = async (item) => {
+    try {
+      const plan = await api.previewSoftwareRevertPlan({ workspaceRoot: workspace, checkpointPath: item.checkpointPath });
+      setPlanPreview(plan); setPlanPayload(null);
+      setMessage(item.action === 'software-import' ? '已生成撤销安置计划：本体将移入 inbox/trash，备份保留。' : '已生成停用发布计划：解除连接器绑定并停用 registry 条目，已发布版本保留。');
+    } catch (error) { setMessage(`软件撤销计划被拒绝：${friendlyError(error)}`); }
   };
 
   const previewGit = async (action) => {
@@ -392,19 +414,24 @@ function App() {
     const target = planPreview.target?.path || (planPreview.kind === 'platform-view' ? `本地管理视图/platform:${planPreview.target?.platformId}` : `${planPreview.target?.repository}/${planPreview.target?.resourceId}/current.json`);
     if (!await api.confirm(`确认执行此计划？\n\n目标：${target}\n\n执行前会再次核对文件状态，失败会阻止覆盖。`)) return;
     setBusy(true);
+    setTransactionProgress(null);
     try {
       const applied = await api.applyPlan({ plan: planPreview, afterText: planPayload?.afterText, actor: 'local-user' });
       const verification = await api.verifyPlan({ plan: planPreview });
       const refreshed = await api.scanWorkspace(workspace);
       setInventory(refreshed);
       setGitDetails(refreshed.git);
+      if (integrationTargetId && integrationPath) await reloadIntegrationTarget();
+      setIntegrationTargetVersion('');
+      setTargetVersions({});
       setPlanPreview(null);
       setPlanPayload(null);
-      setMessage(planPreview.kind === 'software-import' ? `软件本体安置与恢复演练${verification.ok ? '通过' : '未通过'}；尚未发布配方，也未接入连接器。` : planPreview.kind === 'software-recipe-publish' ? applied.status === 'published-version-only' && verification.ok ? `版本查询已发布，连接器健康检查和单格认证均通过；其它功能尚需适配。` : `配方文件${verification.ok ? '已发布' : '回读失败'}，但软件仍待验证：${applied.check?.issues?.join('；') || '缺少健康检查结果'}。` : `计划已${applied.status === 'already-applied' ? '确认已执行' : '执行'}，验证${verification.ok ? '通过' : '未通过'}。`);
+      setMessage(planPreview.kind === 'software-import' ? `软件本体安置与恢复演练${verification.ok ? '通过' : '未通过'}；尚未发布配方，也未接入连接器。` : planPreview.kind === 'software-recipe-publish' ? applied.status === 'published-version-only' && verification.ok ? `版本查询已发布，连接器健康检查和单格认证均通过；其它功能尚需适配。` : `配方文件${verification.ok ? '已发布' : '回读失败'}，但软件仍待验证：${applied.check?.issues?.join('；') || '缺少健康检查结果'}。` : planPreview.kind === 'software-revert' ? `软件撤销/停用${verification.ok ? '已验证' : '验证未通过'}；${applied.releaseRetained ? '已发布版本按只读规则保留。' : '备份保留，本体已移入垃圾桶。'}` : `计划已${applied.status === 'already-applied' ? '确认已执行' : '执行'}，验证${verification.ok ? '通过' : '未通过'}。`);
     } catch (error) {
       setMessage(`计划执行失败：${friendlyError(error)}`);
     } finally {
       setBusy(false);
+      setTransactionProgress(null);
     }
   };
 
@@ -430,6 +457,7 @@ function App() {
 
       <section className="content">
         <div className="notice" role="status" aria-live="polite"><strong>当前状态：</strong>{message}</div>
+        {transactionProgress && <div className="notice" role="progressbar" aria-valuenow={transactionProgress.bytesTotal ? transactionProgress.bytesDone : transactionProgress.filesDone} aria-valuemin={0} aria-valuemax={transactionProgress.bytesTotal || transactionProgress.filesTotal}>正在处理 {transactionProgress.stage}：{transactionProgress.filesDone}/{transactionProgress.filesTotal} 个文件 · {transactionProgress.path}<progress value={transactionProgress.bytesTotal ? transactionProgress.bytesDone : transactionProgress.filesDone} max={transactionProgress.bytesTotal || transactionProgress.filesTotal} /></div>}
         <DashboardStats inventory={inventory} gitState={gitState} />
 
         <div className="panel-grid">
@@ -440,7 +468,7 @@ function App() {
           <HelpPanel />
           <ResourcePanel inventory={inventory} resources={resources} resourceFilter={resourceFilter} setResourceFilter={setResourceFilter} targetVersions={targetVersions} setTargetVersions={setTargetVersions} previewResource={previewResource} />
           <DocumentPanel documentSummaries={documentSummaries} visibleDocuments={visibleDocuments} documentFilter={documentFilter} setDocumentFilter={setDocumentFilter} selectedDocument={selectedDocument} documentDraft={documentDraft} setDocumentDraft={setDocumentDraft} sensitiveConfirmed={sensitiveConfirmed} setSensitiveConfirmed={setSensitiveConfirmed} openDocument={openDocument} previewDocument={previewDocument} />
-          <SoftwarePanel api={api} workspace={workspace} inventory={inventory} software={software} softwareResults={softwareResults} checkSoftware={checkSoftware} previewSoftwareLocation={previewSoftwareLocation} previewSoftware={previewSoftware} previewSoftwareImport={previewSoftwareImport} previewSoftwareRecipe={previewSoftwareRecipe} setMessage={setMessage} />
+          <SoftwarePanel api={api} workspace={workspace} inventory={inventory} software={software} softwareResults={softwareResults} checkSoftware={checkSoftware} previewSoftwareLocation={previewSoftwareLocation} previewSoftware={previewSoftware} previewSoftwareImport={previewSoftwareImport} previewSoftwareRecipe={previewSoftwareRecipe} previewSoftwareRevert={previewSoftwareRevert} setMessage={setMessage} />
           <GitPanel gitDetails={gitDetails} workspace={workspace} refreshGit={refreshGit} previewGit={previewGit} sensitiveScan={sensitiveScan} />
         </div>
         <PlanPreview planPreview={planPreview} executePlan={executePlan} closePlan={() => { setPlanPreview(null); setPlanPayload(null); }} planWriteKinds={PLAN_WRITE_KINDS} />

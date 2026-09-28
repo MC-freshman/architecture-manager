@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import { defaultAuditRoot } from './core/paths.mjs';
+import { makeId, output, saveCheckpoint, writeAudit } from './transactions/kernel.mjs';
 
-const IDS = new Set(['codex', 'dsh', 'workbuddy', 'zcode', 'doubao', 'qoder']);
+import { isFormalPlatform } from './core/platforms.mjs';
 const SOFTWARE_ID = /^[a-z0-9][a-z0-9._-]*$/;
 const KINDS = new Set(['portable-file', 'unpacked-directory', 'installer']);
 
@@ -10,7 +12,14 @@ function inside(parent, target) {
   const rel = relative(parent, target);
   return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !/^[A-Za-z]:/i.test(rel));
 }
-function digest(path) { return createHash('sha256').update(readFileSync(path)).digest('hex'); }
+function digest(path) {
+  const hash = createHash('sha256');
+  const file = openSync(path, 'r');
+  const chunk = Buffer.allocUnsafe(4 * 1024 * 1024);
+  try { let count; while ((count = readSync(file, chunk, 0, chunk.length, null)) > 0) hash.update(chunk.subarray(0, count)); }
+  finally { closeSync(file); }
+  return hash.digest('hex');
+}
 function hashSource(path, kind) {
   const rows = [];
   const walk = (directory, prefix = '') => {
@@ -19,21 +28,36 @@ function hashSource(path, kind) {
       const next = join(directory, item.name);
       const rel = prefix ? `${prefix}/${item.name}` : item.name;
       if (item.isDirectory()) walk(next, rel);
-      else if (item.isFile()) rows.push({ path: rel, sha256: digest(next) });
+      else if (item.isFile()) rows.push({ path: rel, sha256: digest(next), bytes: statSync(next).size });
       else throw new Error('SOFTWARE_FILE_TYPE_NOT_ALLOWED');
     }
   };
   if (kind === 'unpacked-directory') walk(path);
-  else rows.push({ path: basename(path), sha256: digest(path) });
+  else rows.push({ path: basename(path), sha256: digest(path), bytes: statSync(path).size });
   if (!rows.length) throw new Error('SOFTWARE_SOURCE_EMPTY');
   return rows.sort((left, right) => left.path.localeCompare(right.path));
 }
-function copyRows(source, destination, kind, rows) {
-  for (const row of rows) {
+function copyRows(source, destination, kind, rows, onProgress = () => {}, stage = '') {
+  const bytesTotal = rows.reduce((sum, row) => sum + row.bytes, 0);
+  let bytesDone = 0;
+  for (const [index, row] of rows.entries()) {
     const from = kind === 'unpacked-directory' ? join(source, row.path) : source;
     const to = join(destination, row.path);
     mkdirSync(dirname(to), { recursive: true });
-    copyFileSync(from, to);
+    const sourceFile = openSync(from, 'r');
+    let destinationFile;
+    try {
+      destinationFile = openSync(to, 'wx');
+      const chunk = Buffer.allocUnsafe(4 * 1024 * 1024);
+      let count;
+      while ((count = readSync(sourceFile, chunk, 0, chunk.length, null)) > 0) {
+        let offset = 0;
+        while (offset < count) offset += writeSync(destinationFile, chunk, offset, count - offset);
+        bytesDone += count;
+        onProgress({ stage, path: row.path, bytesDone, bytesTotal, filesDone: index, filesTotal: rows.length });
+      }
+    } finally { closeSync(sourceFile); if (destinationFile !== undefined) closeSync(destinationFile); }
+    onProgress({ stage, path: row.path, bytesDone, bytesTotal, filesDone: index + 1, filesTotal: rows.length });
   }
 }
 function assertRows(directory, rows) {
@@ -42,7 +66,7 @@ function assertRows(directory, rows) {
 
 export function buildSoftwareImportPlan({ workspaceRoot, platformId, softwareId, sourcePath, intakeKind, now = new Date().toISOString() }) {
   const root = resolve(workspaceRoot);
-  if (!IDS.has(platformId) || !SOFTWARE_ID.test(softwareId) || !KINDS.has(intakeKind)) throw new Error('INVALID_SOFTWARE_INTAKE');
+  if (!isFormalPlatform(platformId) || !SOFTWARE_ID.test(softwareId) || !KINDS.has(intakeKind)) throw new Error('INVALID_SOFTWARE_INTAKE');
   const platformRoot = join(root, platformId);
   if (!existsSync(platformRoot) || !lstatSync(platformRoot).isDirectory()) throw new Error('PLATFORM_DIRECTORY_NOT_FOUND');
   const source = resolve(sourcePath);
@@ -65,37 +89,51 @@ export function buildSoftwareImportPlan({ workspaceRoot, platformId, softwareId,
       { operation: 'copy-verified-body', target, files: rows.length }
     ],
     verification: ['source hashes unchanged before apply', 'backup fully copied and restored once', 'body and backup hashes equal source'],
+    estimatedAdditionalBytes: 2 * rows.reduce((sum, row) => sum + row.bytes, 0),
     rows
   };
 }
 
-export function applySoftwareImport({ plan }) {
+export function applySoftwareImport({ plan }, { actor = 'local-user', auditRoot = defaultAuditRoot(), now = new Date().toISOString(), onProgress = () => {}, failAfterCheckpoint = false } = {}) {
   if (plan?.kind !== 'software-import') throw new Error('INVALID_SOFTWARE_IMPORT_PLAN');
   const fresh = buildSoftwareImportPlan({ workspaceRoot: plan.workspaceRoot, platformId: plan.target.platformId, softwareId: plan.target.softwareId, sourcePath: plan.target.source, intakeKind: plan.target.intakeKind, now: plan.generatedAt });
   if (JSON.stringify(fresh.rows) !== JSON.stringify(plan.rows) || fresh.target.path !== plan.target.path || fresh.target.backup !== plan.target.backup) throw new Error('SOFTWARE_SOURCE_CHANGED');
   const { source, intakeKind, path: target, backup } = plan.target;
+  const transactionId = makeId(plan, now);
+  const checkpoint = saveCheckpoint(auditRoot, transactionId, `${JSON.stringify({ schema: 'architecture-manager-new-software/v1', platformId: plan.target.platformId, softwareId: plan.target.softwareId, target, backup, targetExisted: false, backupExisted: false, rows: plan.rows }, null, 2)}\n`);
+  if (failAfterCheckpoint) {
+    const audit = writeAudit({ auditRoot, transactionId, plan, actor, action: 'software-import', status: 'interrupted-before-write', target, checkpointSha256: checkpoint.sha256, checkpointPath: checkpoint.path, error: 'SIMULATED_INTERRUPT', now });
+    throw Object.assign(new Error('SIMULATED_INTERRUPT'), { audit, checkpointPath: checkpoint.path });
+  }
   const runtimeParent = dirname(target);
   const backupParent = dirname(backup);
   mkdirSync(runtimeParent, { recursive: true });
   mkdirSync(backupParent, { recursive: true });
   const backupStage = mkdtempSync(join(backupParent, '.backup-stage-'));
-  const restoreStage = mkdtempSync(join(runtimeParent, '.restore-drill-'));
   const bodyStage = mkdtempSync(join(runtimeParent, '.body-stage-'));
+  let backupCommitted = false;
+  let bodyCommitted = false;
   try {
-    copyRows(source, join(backupStage, 'payload'), intakeKind, plan.rows);
+    copyRows(source, join(backupStage, 'payload'), intakeKind, plan.rows, onProgress, 'backup');
     assertRows(join(backupStage, 'payload'), plan.rows);
-    copyRows(join(backupStage, 'payload'), restoreStage, 'unpacked-directory', plan.rows);
-    assertRows(restoreStage, plan.rows);
-    copyRows(join(backupStage, 'payload'), bodyStage, 'unpacked-directory', plan.rows);
+    copyRows(join(backupStage, 'payload'), bodyStage, 'unpacked-directory', plan.rows, onProgress, 'restore-and-body');
     assertRows(bodyStage, plan.rows);
     const manifest = { schema: 'architecture-manager-software-backup/v1', platformId: plan.target.platformId, softwareId: plan.target.softwareId, sourceName: basename(source), intakeKind, files: plan.rows, restoreDrill: { performed: true, verifiedFiles: plan.rows.length, at: new Date().toISOString() }, target };
     writeFileSync(join(backupStage, 'MANIFEST.json'), `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' });
     renameSync(backupStage, backup);
+    backupCommitted = true;
     renameSync(bodyStage, target);
+    bodyCommitted = true;
     assertRows(target, plan.rows);
-    return { schema: 'architecture-manager-software-import-result/v1', status: 'staged-awaiting-recipe', platformId: plan.target.platformId, softwareId: plan.target.softwareId, target, backup, files: plan.rows.length, restored: true, writePerformed: true };
+    const audit = writeAudit({ auditRoot, transactionId, plan, actor, action: 'software-import', status: 'applied', target, newSha256: createHash('sha256').update(JSON.stringify(plan.rows)).digest('hex'), checkpointSha256: checkpoint.sha256, checkpointPath: checkpoint.path, writePerformed: true, now });
+    return { ...output(audit, checkpoint.path), status: 'staged-awaiting-recipe', audit, platformId: plan.target.platformId, softwareId: plan.target.softwareId, target, backup, files: plan.rows.length, restored: true };
+  } catch (error) {
+    if (bodyCommitted && existsSync(target)) rmSync(target, { recursive: true, force: true });
+    if (backupCommitted && existsSync(backup)) rmSync(backup, { recursive: true, force: true });
+    const audit = writeAudit({ auditRoot, transactionId, plan, actor, action: 'software-import', status: 'recovered-after-failure', target, checkpointSha256: checkpoint.sha256, checkpointPath: checkpoint.path, error: String(error?.message || error), now });
+    throw Object.assign(error, { audit, checkpointPath: checkpoint.path });
   } finally {
-    for (const staging of [backupStage, restoreStage, bodyStage]) if (existsSync(staging)) rmSync(staging, { recursive: true, force: true });
+    for (const staging of [backupStage, bodyStage]) if (existsSync(staging)) rmSync(staging, { recursive: true, force: true });
   }
 }
 

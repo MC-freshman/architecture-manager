@@ -13,6 +13,7 @@ import {
   buildSoftwareLaunchPlan,
   buildSoftwareImportPlan,
   buildSoftwareRecipePlan,
+  buildSoftwareRevertPlan,
   healthSoftware,
   inspectGit,
   inspectPlatformDirectory,
@@ -20,6 +21,7 @@ import {
   inspectRegistration,
   listIntegrationTargets,
   listSoftwareIntakes,
+  listSoftwareRecoveries,
   readCatalogEntry,
   readDocument,
   readIntegrationTarget,
@@ -71,6 +73,8 @@ function registerReadOnlyIpc() {
   ipcMain.handle('plan:software-import', (_event, input) => buildSoftwareImportPlan(input));
   ipcMain.handle('software:intakes', (_event, input) => listSoftwareIntakes(input));
   ipcMain.handle('plan:software-recipe', (_event, input) => buildSoftwareRecipePlan(input));
+  ipcMain.handle('software:recoveries', (_event, input) => listSoftwareRecoveries(input));
+  ipcMain.handle('plan:software-revert', (_event, input) => buildSoftwareRevertPlan(input));
   ipcMain.handle('software:select-source', async (_event, kind) => {
     const result = await dialog.showOpenDialog({ title: kind === 'unpacked-directory' ? '选择已解压的软件目录' : '选择下载的软件文件', properties: [kind === 'unpacked-directory' ? 'openDirectory' : 'openFile'] });
     return result.canceled ? null : result.filePaths[0] ?? null;
@@ -90,7 +94,7 @@ function registerReadOnlyIpc() {
   ipcMain.handle('integration:read', (_event, input) => readIntegrationTarget(input));
   ipcMain.handle('platform:suggest-bridge', (_event, input) => suggestPlatformBridge(input));
   ipcMain.handle('plan:integration', (_event, input) => buildIntegrationPlan(input));
-  ipcMain.handle('transaction:apply', (_event, input) => applyPlan(input));
+  ipcMain.handle('transaction:apply', (event, input) => applyPlan({ ...input, onProgress: (progress) => event.sender.send('transaction:progress', progress) }));
   ipcMain.handle('transaction:verify', (_event, input) => verifyPlanTarget(input));
 }
 

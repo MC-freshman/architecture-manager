@@ -133,8 +133,8 @@ export function buildSoftwareLaunchPlan({ workspaceRoot, softwareId, mode = 'hea
     plan.steps.push({ operation: 'health-check', transport: software.transport, sideEffects: 'none', dispatch: 'provider-only' });
   } else if (mode === 'launch') {
     const interactive = software.kind === 'mcp-http' || software.kind === 'desktop-session' || software.manualSteps.length > 0;
-    plan.steps.push({ operation: 'launch', transport: software.transport, sideEffects: interactive ? 'interactive' : 'local-process', consentRequired: true, dispatch: 'registered-provider-only' });
-    if (interactive) plan.verification.push('if manual startup steps remain, return INTERACTIVE_REQUIRED rather than claiming ready');
+    plan.steps.push({ operation: 'launch-requirements', transport: software.transport, sideEffects: interactive ? 'interactive' : 'local-process', dispatch: 'unavailable', status: 'INTERACTIVE_REQUIRED' });
+    plan.verification.push('no launch executor is registered in the manager; do not report a started process');
   } else if (mode === 'open-location') {
     if (!software.bodyPath) throw new Error('SOFTWARE_BODY_PATH_UNDECLARED');
     plan.steps.push({ operation: 'open-software-location', path: software.bodyPath, sideEffects: 'opens-system-file-manager', consentRequired: true, dispatch: 'electron-shell' });

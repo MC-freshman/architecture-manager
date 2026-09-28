@@ -13,8 +13,8 @@ test('application boundary exposes the complete IPC domain surface', () => {
   const expected = [
     'applyPlan', 'buildDocumentPlan', 'buildGitPlan', 'buildIntegrationPlan',
     'buildPlatformViewPlan', 'buildRegistryPlan', 'buildResourcePointerPlan',
-    'buildSoftwareImportPlan', 'buildSoftwareLaunchPlan', 'buildSoftwareRecipePlan', 'healthSoftware', 'inspectGit',
-    'inspectPlatformConnection', 'inspectPlatformDirectory', 'inspectRegistration', 'listIntegrationTargets', 'listSoftwareIntakes',
+    'buildSoftwareImportPlan', 'buildSoftwareLaunchPlan', 'buildSoftwareRecipePlan', 'buildSoftwareRevertPlan', 'healthSoftware', 'inspectGit',
+    'inspectPlatformConnection', 'inspectPlatformDirectory', 'inspectRegistration', 'listIntegrationTargets', 'listSoftwareIntakes', 'listSoftwareRecoveries',
     'readCatalogEntry', 'readDocument', 'readIntegrationTarget', 'readSkillContent',
     'runPlatformCheck', 'scanSensitiveFiles', 'scanWorkspace', 'suggestPlatformBridge', 'verifyPlanTarget', 'verifySoftwareImport', 'verifySoftwareRecipe'
   ];

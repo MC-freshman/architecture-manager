@@ -5,20 +5,22 @@ import { buildIntegrationPlan } from './integration.mjs';
 import { assertPublishedVersion } from './plans.mjs';
 import { applySoftwareImport, verifySoftwareImport } from './software-intake.mjs';
 import { applySoftwareRecipe, verifySoftwareRecipe } from './software-publish.mjs';
+import { revertSoftwareTransaction, verifySoftwareRevert } from './software-recovery.mjs';
 import { resolve } from 'node:path';
 import { defaultAuditRoot, localViewPath, safeRelative, targetPath } from './core/paths.mjs';
 import { sha256 } from './core/hash.mjs';
 import { atomicWrite, makeId, output, requirePlan, saveCheckpoint, writeAudit } from './transactions/kernel.mjs';
 
-export function applyPlan({ plan, afterText = null, actor = 'local-user', auditRoot = defaultAuditRoot(), now = new Date().toISOString(), failAfterCheckpoint = false }) {
+export function applyPlan({ plan, afterText = null, actor = 'local-user', auditRoot = defaultAuditRoot(), now = new Date().toISOString(), failAfterCheckpoint = false, onProgress = () => {} }) {
   requirePlan(plan);
   if (plan.kind === 'document-edit') return applyDocument(plan, afterText, { actor, auditRoot, now, failAfterCheckpoint });
   if (plan.kind === 'resource-pointer') return applyPointer(plan, { actor, auditRoot, now, failAfterCheckpoint });
   if (plan.kind === 'platform-view') return applyPlatformView(plan, { actor, auditRoot, now, failAfterCheckpoint });
   if (plan.kind === 'registry-edit') return applyRegistry(plan, afterText || plan.payload?.afterText, { actor, auditRoot, now, failAfterCheckpoint });
-  if (plan.kind === 'integration-config' || plan.kind === 'integration-pointer' || plan.kind === 'integration-registry') return applyIntegration(plan, afterText || plan.payload?.afterText, { actor, auditRoot, now, failAfterCheckpoint });
-  if (plan.kind === 'software-import') return applySoftwareImport({ plan });
-  if (plan.kind === 'software-recipe-publish') return applySoftwareRecipe({ plan });
+  if (plan.kind === 'integration-config' || plan.kind === 'integration-registry') return applyIntegration(plan, afterText || plan.payload?.afterText, { actor, auditRoot, now, failAfterCheckpoint });
+  if (plan.kind === 'software-import') return applySoftwareImport({ plan }, { actor, auditRoot, now, failAfterCheckpoint, onProgress });
+  if (plan.kind === 'software-recipe-publish') return applySoftwareRecipe({ plan }, { actor, auditRoot, now, failAfterCheckpoint, onProgress });
+  if (plan.kind === 'software-revert') return revertSoftwareTransaction({ plan, auditRoot, actor, now });
   throw new Error('TRANSACTION_KIND_UNSUPPORTED');
 }
 
@@ -182,24 +184,12 @@ function applyIntegration(plan, afterText, context) {
     const event = writeAudit({ ...context, transactionId: id, plan, action: plan.kind, status: 'blocked-external-change', target: targetRelative, oldSha256: expectedOld, newSha256: expectedNew, error: 'EXTERNAL_CHANGE_DETECTED' });
     throw Object.assign(new Error('EXTERNAL_CHANGE_DETECTED'), { audit: event });
   }
-  if (plan.kind === 'integration-pointer') {
-    if (typeof plan.target?.currentVersion !== 'string' || typeof plan.target?.targetVersion !== 'string') throw new Error('INVALID_TRANSACTION_PLAN');
-    let pointer;
-    try { pointer = JSON.parse(before); } catch { throw new Error('CURRENT_POINTER_INVALID'); }
-    if (pointer.version !== plan.target.currentVersion) throw new Error('EXTERNAL_CHANGE_DETECTED');
-    const next = `${JSON.stringify({ ...pointer, version: plan.target.targetVersion }, null, 2)}\n`;
-    if (sha256(next) !== expectedNew) throw new Error('PLAN_PAYLOAD_MISMATCH');
-    afterText = next;
-    const validated = buildIntegrationPlan({ workspaceRoot: plan.workspaceRoot, kind: plan.target.kind, targetId: plan.target.targetId, mode: 'pointer', relativePath: targetRelative, baselineSha256: currentSha, targetVersion: plan.target.targetVersion, availableVersions: [plan.target.targetVersion] });
-    if (validated.steps[0].newSha256 !== expectedNew) throw new Error('PLAN_PAYLOAD_MISMATCH');
-  } else {
-    if (typeof afterText !== 'string') throw new Error('INTEGRATION_PAYLOAD_REQUIRED');
-    try { JSON.parse(afterText); } catch { throw new Error('INTEGRATION_JSON_INVALID'); }
-    if (sha256(afterText) !== expectedNew) throw new Error('PLAN_PAYLOAD_MISMATCH');
-    const validated = buildIntegrationPlan({ workspaceRoot: plan.workspaceRoot, kind: plan.target.kind, targetId: plan.target.targetId, mode: plan.target.mode, relativePath: targetRelative, beforeText: before, afterText, baselineSha256: currentSha });
-    if (validated.steps[0].newSha256 !== expectedNew) throw new Error('PLAN_PAYLOAD_MISMATCH');
-    if (JSON.stringify(validated.steps[1] || null) !== JSON.stringify(companionStep || null) || (validated.payload?.companionAfterText || null) !== (plan.payload?.companionAfterText || null)) throw new Error('PLAN_PAYLOAD_MISMATCH');
-  }
+  if (typeof afterText !== 'string') throw new Error('INTEGRATION_PAYLOAD_REQUIRED');
+  try { JSON.parse(afterText); } catch { throw new Error('INTEGRATION_JSON_INVALID'); }
+  if (sha256(afterText) !== expectedNew) throw new Error('PLAN_PAYLOAD_MISMATCH');
+  const validated = buildIntegrationPlan({ workspaceRoot: plan.workspaceRoot, kind: plan.target.kind, targetId: plan.target.targetId, mode: plan.target.mode, relativePath: targetRelative, beforeText: before, afterText, baselineSha256: currentSha });
+  if (validated.steps[0].newSha256 !== expectedNew) throw new Error('PLAN_PAYLOAD_MISMATCH');
+  if (JSON.stringify(validated.steps[1] || null) !== JSON.stringify(companionStep || null) || (validated.payload?.companionAfterText || null) !== (plan.payload?.companionAfterText || null)) throw new Error('PLAN_PAYLOAD_MISMATCH');
   const parent = resolve(target, '..');
   if (!existsSync(parent) || !statSync(parent).isDirectory()) throw new Error('INTEGRATION_PARENT_NOT_FOUND');
   const saved = saveCheckpoint(context.auditRoot, id, before);
@@ -231,6 +221,7 @@ export function verifyPlanTarget({ plan }) {
   requirePlan(plan);
   if (plan.kind === 'software-import') return verifySoftwareImport({ plan });
   if (plan.kind === 'software-recipe-publish') return verifySoftwareRecipe({ plan });
+  if (plan.kind === 'software-revert') return verifySoftwareRevert({ plan });
   if (plan.kind === 'document-edit') {
     const target = targetPath(plan.workspaceRoot, plan.target.path);
     const content = readFileSync(target, 'utf8');
@@ -256,12 +247,8 @@ export function verifyPlanTarget({ plan }) {
     const companionSha = companionStep ? sha256(readFileSync(targetPath(plan.workspaceRoot, companionStep.target), 'utf8')) : null;
     return { schema: 'architecture-manager-verification/v1', ok: actual === plan.steps[0].newSha256 && (!companionStep || companionSha === companionStep.newSha256), target: plan.target.path, actualSha256: actual, expectedSha256: plan.steps[0].newSha256, companionSha256: companionSha, writePerformed: false };
   }
-  if (plan.kind === 'integration-config' || plan.kind === 'integration-registry' || plan.kind === 'integration-pointer') {
+  if (plan.kind === 'integration-config' || plan.kind === 'integration-registry') {
     const target = targetPath(plan.workspaceRoot, plan.target.path);
-    if (plan.kind === 'integration-pointer') {
-      const current = JSON.parse(readFileSync(target, 'utf8'));
-      return { schema: 'architecture-manager-verification/v1', ok: current.version === plan.target.targetVersion, target: plan.target.path, actualVersion: current.version, expectedVersion: plan.target.targetVersion, writePerformed: false };
-    }
     const actual = sha256(readFileSync(target, 'utf8'));
     return { schema: 'architecture-manager-verification/v1', ok: actual === plan.steps[0].newSha256, target: plan.target.path, actualSha256: actual, expectedSha256: plan.steps[0].newSha256, writePerformed: false };
   }

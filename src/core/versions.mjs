@@ -14,3 +14,10 @@ export function compareStableVersions(left, right) {
 export function latestStableVersion(versions) {
   return [...versions].filter((version) => STABLE.test(version)).sort(compareStableVersions).at(-1) || null;
 }
+
+export function sortVersions(left, right) {
+  if (STABLE.test(left) && STABLE.test(right)) return compareStableVersions(left, right);
+  if (STABLE.test(left)) return -1;
+  if (STABLE.test(right)) return 1;
+  return left.localeCompare(right, undefined, { numeric: true });
+}

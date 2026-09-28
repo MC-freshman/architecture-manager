@@ -5,7 +5,7 @@ import { join, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
-const PLATFORM_IDS = new Set(['codex', 'dsh', 'workbuddy', 'zcode', 'doubao', 'qoder']);
+import { isFormalPlatform } from './core/platforms.mjs';
 
 function sha256(value) { return createHash('sha256').update(value).digest('hex'); }
 function inside(parent, target) {
@@ -14,11 +14,14 @@ function inside(parent, target) {
 }
 function readJson(path) { return JSON.parse(readFileSync(path, 'utf8')); }
 function fail(stage, issues, extra = {}) { return { schema: 'architecture-manager-platform-check/v1', stage, issues, ...extra, writePerformed: false }; }
+function reportGaps(report) {
+  return (report?.verdicts || []).filter((row) => row.verdict !== 'pass').map((row) => ({ id: row.id, verdict: row.verdict, reason: row.reason || null, remediation: row.remediation?.path || null, costMinutes: Number.isInteger(row.remediation?.costMinutes) ? row.remediation.costMinutes : null }));
+}
 
 export function inspectPlatformConnection({ workspaceRoot, platformId }) {
   const root = resolve(workspaceRoot);
   if (!existsSync(root) || !statSync(root).isDirectory()) throw new Error('WORKSPACE_NOT_FOUND');
-  if (!PLATFORM_IDS.has(platformId)) throw new Error('UNKNOWN_PLATFORM_ID');
+  if (!isFormalPlatform(platformId)) throw new Error('UNKNOWN_PLATFORM_ID');
   const platformRoot = join(root, platformId);
   if (!existsSync(platformRoot) || !statSync(platformRoot).isDirectory()) return fail('missing-directory', ['平台目录不存在']);
   const canonical = join(platformRoot, 'bridge.json');
@@ -49,7 +52,10 @@ export function inspectPlatformConnection({ workspaceRoot, platformId }) {
     try {
       const previous = readJson(previousPath);
       if (previous.bridgeSha256 === common.bridgeSha256 && previous.configSha256 === configSha256 && previous.platformId === platformId) {
-        return fail(previous.stage, previous.issues || [], { ...common, configPath, configSha256, evidencePath: previousPath, counts: previous.counts || null });
+        const reportPath = typeof previous.conformPath === 'string' ? resolve(previous.conformPath) : null;
+        const cachedGaps = reportPath && inside(join(platformRoot, 'runtime', 'manager-check'), reportPath) && existsSync(reportPath) ? reportGaps(readJson(reportPath)) : [];
+        const issues = (previous.issues || []).filter((issue) => issue !== '调用检查命令执行失败' || !(previous.counts?.fail > 0));
+        return fail(previous.stage, issues, { ...common, configPath, configSha256, evidencePath: previousPath, counts: previous.counts || null, gaps: previous.gaps || cachedGaps, checkedAt: previous.checkedAt || null, evidenceFresh: false });
       }
     } catch { /* A broken old report is not evidence. */ }
   }
@@ -101,17 +107,20 @@ export async function runPlatformCheck({ workspaceRoot, platformId, mode = 'quic
   const failed = rows.filter((row) => row.status === 'FAIL' || row.verdict === 'FAIL').length;
   const passed = rows.filter((row) => row.status === 'PASS' || row.verdict === 'PASS').length;
   const blocking = [];
-  if (conformResult.exitCode !== 0) blocking.push('能力检查命令执行失败');
-  if (matrixResult.exitCode !== 0) blocking.push('调用检查命令执行失败');
+  if (conformResult.exitCode !== 0 && !floor) blocking.push('能力检查命令执行失败');
+  if (matrixResult.exitCode !== 0 && (!matrixReport || rows.length === 0)) blocking.push('调用检查命令执行失败');
   if (!floor) blocking.push('能力检查未产生可读报告');
   if (!matrixReport || rows.length === 0) blocking.push('调用检查未产生有效行');
   if (rows.length && passed === 0) blocking.push('调用检查没有任何成功行');
   if (failed) blocking.push(`调用检查有 ${failed} 条失败`);
   if (matrixReport?.summary?.['NEEDS-INPUT']) blocking.push(`调用检查有 ${matrixReport.summary['NEEDS-INPUT']} 条需要输入`);
+  if (matrixResult.exitCode !== 0 && rows.length > 0 && failed === 0 && !matrixReport?.summary?.['NEEDS-INPUT']) blocking.push('调用检查异常退出，报告未说明失败原因');
+  if (conformResult.exitCode !== 0 && floor?.floorReached === true) blocking.push('能力检查异常退出，不能据此声明能力地板通过');
   const issues = [...blocking];
   if (floor && !floor.floorReached) issues.push(`能力并集仍有 ${floor.counts?.declaredAbsent ?? '?'} 个缺口，未验证 ${floor.counts?.unverified ?? '?'} 项`);
   const stage = blocking.length ? 'check-failed' : mode === 'full' && floor.floorReached ? 'complete' : 'callable';
-  const result = { schema: 'architecture-manager-platform-check/v1', platformId, stage, issues, mode, bridgeSha256: pre.bridgeSha256, configSha256: pre.configSha256, counts: { pass: passed, fail: failed, expected: matrixReport?.summary?.EXPECTED ?? null, needsInput: matrixReport?.summary?.['NEEDS-INPUT'] ?? null, conform: floor?.counts || null }, conformDigest: floor?.conformDigest || null, conformPath, matrixPath, commandErrors: [conformResult.stderr, matrixResult.stderr].filter(Boolean).map((item) => String(item).slice(0, 500)), checkedAt: new Date().toISOString() };
+  const gaps = reportGaps(floor);
+  const result = { schema: 'architecture-manager-platform-check/v1', platformId, stage, issues, mode, bridgeSha256: pre.bridgeSha256, configSha256: pre.configSha256, counts: { pass: passed, fail: failed, expected: matrixReport?.summary?.EXPECTED ?? null, needsInput: matrixReport?.summary?.['NEEDS-INPUT'] ?? null, conform: floor?.counts || null }, gaps, conformDigest: floor?.conformDigest || null, conformPath, matrixPath, commandErrors: [conformResult.stderr, matrixResult.stderr].filter(Boolean).map((item) => String(item).slice(0, 500)), checkedAt: new Date().toISOString(), evidenceFresh: true };
   const latest = join(base, 'latest.json');
   const temporary = `${latest}.${process.pid}.tmp`;
   writeFileSync(temporary, `${JSON.stringify(result, null, 2)}\n`, { flag: 'wx' });

@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld('architectureManager', Object.freeze({
   previewSoftwareImportPlan: (input) => ipcRenderer.invoke('plan:software-import', input),
   listSoftwareIntakes: (input) => ipcRenderer.invoke('software:intakes', input),
   previewSoftwareRecipePlan: (input) => ipcRenderer.invoke('plan:software-recipe', input),
+  listSoftwareRecoveries: (input) => ipcRenderer.invoke('software:recoveries', input),
+  previewSoftwareRevertPlan: (input) => ipcRenderer.invoke('plan:software-revert', input),
   selectSoftwareSource: (kind) => ipcRenderer.invoke('software:select-source', kind),
   openSoftwareLocation: (input) => ipcRenderer.invoke('software:open-location', input),
   inspectGit: (root) => ipcRenderer.invoke('git:inspect', root),
@@ -32,5 +34,6 @@ contextBridge.exposeInMainWorld('architectureManager', Object.freeze({
   suggestPlatformBridge: (input) => ipcRenderer.invoke('platform:suggest-bridge', input),
   previewIntegrationPlan: (input) => ipcRenderer.invoke('plan:integration', input),
   applyPlan: (input) => ipcRenderer.invoke('transaction:apply', input),
+  onTransactionProgress: (callback) => { const listener = (_event, progress) => callback(progress); ipcRenderer.on('transaction:progress', listener); return () => ipcRenderer.removeListener('transaction:progress', listener); },
   verifyPlan: (input) => ipcRenderer.invoke('transaction:verify', input)
 }));
