@@ -51,6 +51,7 @@ test('shows the update log first with the same document kind in scan and read vi
     writeFileSync(join(root, 'versions', '更新日志.md'), '# 更新日志\n');
     const inventory = scanWorkspace(root);
     assert.equal(FORMAL_TOP_LEVEL_DIRECTORIES.includes('architecture-manager'), true);
+    assert.equal(FORMAL_TOP_LEVEL_DIRECTORIES.includes('ai学习笔记'), true);
     assert.equal(inventory.architectureDocuments[0], 'versions/更新日志.md');
     assert.equal(inventory.documentSummaries[0].kind, 'update-log');
     assert.equal(readDocument(root, 'versions/更新日志.md').kind, 'update-log');

@@ -11,6 +11,7 @@ export const FORMAL_TOP_LEVEL_DIRECTORIES = [
   '.workbuddy',
   '.zcode',
   'agent',
+  'ai学习笔记',
   'architecture-manager',
   'codex',
   'docs-site',
