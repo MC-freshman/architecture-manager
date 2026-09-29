@@ -10,4 +10,7 @@ export { verifySoftwareImport } from '../software-intake.mjs';
 export { listSoftwareIntakes, verifySoftwareRecipe } from '../software-publish.mjs';
 export { listSoftwareRecoveries } from '../software-recovery.mjs';
 export { inspectRunDirectory, listPlatformRuns, listRunLedger } from '../runs.mjs';
+export { readDefectBook, verifyDefectBook } from '../defects.mjs';
+export { inspectInbox } from '../inbox.mjs';
+export { readAuditEvents } from '../audit.mjs';
 
