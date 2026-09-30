@@ -51,6 +51,8 @@ contextBridge.exposeInMainWorld('architectureManager', Object.freeze({
   onboardingDraft: (input) => ipcRenderer.invoke('onboarding:draft', input),
   onboardingCard: (input) => ipcRenderer.invoke('onboarding:card', input),
   runOnboardingPipeline: (input) => ipcRenderer.invoke('onboarding:pipeline', input),
+  previewWorkspaceClonePlan: (input) => ipcRenderer.invoke('plan:workspace-clone', input),
+  applyWorkspaceClone: (input) => ipcRenderer.invoke('workspace:clone', input),
   applyPlan: (input) => ipcRenderer.invoke('transaction:apply', input),
   onTransactionProgress: (callback) => { const listener = (_event, progress) => callback(progress); ipcRenderer.on('transaction:progress', listener); return () => ipcRenderer.removeListener('transaction:progress', listener); },
   verifyPlan: (input) => ipcRenderer.invoke('transaction:verify', input)

@@ -20,6 +20,8 @@ import {
   buildDocsSite,
   buildPlatformScaffoldPlan,
   buildOnboardingCard,
+  buildWorkspaceClonePlan,
+  applyWorkspaceClone,
   governanceOnboardingDraft,
   runOnboardingPipeline,
   checkDocsLinks,
@@ -130,6 +132,8 @@ function registerIpc() {
   ipcMain.handle('onboarding:draft', (_event, input) => governanceOnboardingDraft(input.workspaceRoot, input.platformId));
   ipcMain.handle('onboarding:card', (_event, input) => buildOnboardingCard(input.workspaceRoot, input.platformId));
   ipcMain.handle('onboarding:pipeline', (_event, input) => runOnboardingPipeline(input));
+  ipcMain.handle('plan:workspace-clone', (_event, input) => buildWorkspaceClonePlan(input));
+  ipcMain.handle('workspace:clone', (_event, input) => applyWorkspaceClone({ plan: input.plan }, { actor: 'local-user', now: new Date().toISOString() }));
   ipcMain.handle('transaction:apply', (event, input) => applyPlan({ ...input, onProgress: (progress) => event.sender.send('transaction:progress', progress) }));
   ipcMain.handle('transaction:verify', (_event, input) => verifyPlanTarget(input));
 }

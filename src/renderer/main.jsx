@@ -4,6 +4,7 @@ import './styles.css';
 import {
   AuditPanel,
   CatalogPanel,
+  ClonePanel,
   DashboardStats,
   DocumentPanel,
   GitPanel,
@@ -483,6 +484,7 @@ function App() {
 
       <section className="content">
         <div className="notice" role="status" aria-live="polite"><strong>当前状态：</strong>{message}</div>
+        {!workspace && <ClonePanel api={api} onCloned={(root) => scan(root)} setMessage={setMessage} friendlyError={friendlyError} />}
         {transactionProgress && <div className="notice" role="progressbar" aria-valuenow={transactionProgress.bytesTotal ? transactionProgress.bytesDone : transactionProgress.filesDone} aria-valuemin={0} aria-valuemax={transactionProgress.bytesTotal || transactionProgress.filesTotal}>正在处理 {transactionProgress.stage}：{transactionProgress.filesDone}/{transactionProgress.filesTotal} 个文件 · {transactionProgress.path}<progress value={transactionProgress.bytesTotal ? transactionProgress.bytesDone : transactionProgress.filesDone} max={transactionProgress.bytesTotal || transactionProgress.filesTotal} /></div>}
         <DashboardStats inventory={inventory} gitState={gitState} />
         <HomePulse api={api} workspace={workspace} />

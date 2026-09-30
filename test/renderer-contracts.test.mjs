@@ -11,13 +11,13 @@ test('renderer domains stay split and write kinds remain centralized', () => {
   const source = [
     'stats.jsx', 'platform.jsx', 'integration.jsx', 'catalog.jsx',
     'resources.jsx', 'documents.jsx', 'software.jsx', 'git.jsx',
-    'safety.jsx', 'plan-preview.jsx', 'runs.jsx', 'governance.jsx', 'audit.jsx', 'inbox.jsx', 'releases.jsx', 'plancenter.jsx', 'pulse.jsx', 'onboard.jsx'
+    'safety.jsx', 'plan-preview.jsx', 'runs.jsx', 'governance.jsx', 'audit.jsx', 'inbox.jsx', 'releases.jsx', 'plancenter.jsx', 'pulse.jsx', 'onboard.jsx', 'clone.jsx'
   ].map((file) => readFileSync(join(root, 'src', 'renderer', 'panels', file), 'utf8')).join('\n');
   const domains = [
     'DashboardStats', 'PlatformPanel', 'IntegrationPanel', 'CatalogPanel',
     'ResourcePanel', 'DocumentPanel', 'SoftwarePanel', 'GitPanel',
     'SafetyPanel', 'HelpPanel', 'PlanPreview',
-    'RunsPanel', 'GovernancePanel', 'AuditPanel', 'InboxPanel', 'ReleasePanel', 'PlanCenterPanel', 'HomePulse', 'OnboardPanel'
+    'RunsPanel', 'GovernancePanel', 'AuditPanel', 'InboxPanel', 'ReleasePanel', 'PlanCenterPanel', 'HomePulse', 'OnboardPanel', 'ClonePanel'
   ];
   for (const domain of domains) {
     assert.match(source, new RegExp(`export function ${domain}\\b`), domain);
