@@ -1,5 +1,6 @@
 export const PLAN_WRITE_KINDS = [
   'document-edit',
+  'defect-book-edit',
   'resource-pointer',
   'platform-view',
   'registry-edit',
@@ -32,7 +33,14 @@ export function friendlyError(error) {
     NO_CHANGE: '目标版本与当前默认版本相同，无需切换。',
     TARGET_VERSION_NOT_FROZEN: '目标版本缺少发布封条 SHA256SUMS，不能切换。',
     SOFTWARE_CONNECTOR_NOT_CONFIGURED: '所选平台仍未绑定新版软件连接器，请换选已配置的平台或先完成平台接线。',
-    INTEGRATION_BASELINE_MISMATCH: '目标在预览后已变化，请重新读取目标再生成计划。'
+    INTEGRATION_BASELINE_MISMATCH: '目标在预览后已变化，请重新读取目标再生成计划。',
+    DEFECT_BOOK_BASELINE_MISMATCH: '缺陷状态簿在读取后发生了变化，请刷新后再操作。',
+    DEFECT_BOOK_NO_CHANGE: '该缺陷已经是这个状态，无需变更。',
+    DEFECT_BOOK_ROW_NOT_FOUND: '没有找到这条缺陷，请刷新缺陷簿。',
+    DEFECT_BOOK_ROW_EXISTS: '已存在同号缺陷，登记被阻止。',
+    DEFECT_BOOK_FIELD_REQUIRED: '登记缺陷缺少必填字段。',
+    DEFECT_BOOK_STATUS_INVALID: '非法的缺陷状态取值。',
+    DEFECT_BOOK_CORRUPT: '缺陷状态簿不是合法 JSON，操作已阻止。'
   };
   return hints[key] ? `${hints[key]}（${key}）${details.length ? `\n${details.join(':').trim()}` : ''}` : code;
 }

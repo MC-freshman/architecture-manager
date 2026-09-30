@@ -11,19 +11,20 @@ test('renderer domains stay split and write kinds remain centralized', () => {
   const source = [
     'stats.jsx', 'platform.jsx', 'integration.jsx', 'catalog.jsx',
     'resources.jsx', 'documents.jsx', 'software.jsx', 'git.jsx',
-    'safety.jsx', 'plan-preview.jsx'
+    'safety.jsx', 'plan-preview.jsx', 'runs.jsx', 'governance.jsx', 'audit.jsx', 'inbox.jsx'
   ].map((file) => readFileSync(join(root, 'src', 'renderer', 'panels', file), 'utf8')).join('\n');
   const domains = [
     'DashboardStats', 'PlatformPanel', 'IntegrationPanel', 'CatalogPanel',
     'ResourcePanel', 'DocumentPanel', 'SoftwarePanel', 'GitPanel',
-    'SafetyPanel', 'HelpPanel', 'PlanPreview'
+    'SafetyPanel', 'HelpPanel', 'PlanPreview',
+    'RunsPanel', 'GovernancePanel', 'AuditPanel', 'InboxPanel'
   ];
   for (const domain of domains) {
     assert.match(source, new RegExp(`export function ${domain}\\b`), domain);
   }
 
   assert.deepEqual(PLAN_WRITE_KINDS, [
-    'document-edit', 'resource-pointer', 'platform-view', 'registry-edit',
+    'document-edit', 'defect-book-edit', 'resource-pointer', 'platform-view', 'registry-edit',
     'integration-config', 'integration-registry', 'software-import', 'software-recipe-publish', 'software-revert'
   ]);
   assert.match(friendlyError(new Error('EXTERNAL_CHANGE_DETECTED')), /目标文件已被其他程序修改/);

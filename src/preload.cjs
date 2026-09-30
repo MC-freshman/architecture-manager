@@ -33,6 +33,12 @@ contextBridge.exposeInMainWorld('architectureManager', Object.freeze({
   readIntegrationTarget: (input) => ipcRenderer.invoke('integration:read', input),
   suggestPlatformBridge: (input) => ipcRenderer.invoke('platform:suggest-bridge', input),
   previewIntegrationPlan: (input) => ipcRenderer.invoke('plan:integration', input),
+  listRunLedger: (root) => ipcRenderer.invoke('runs:ledger', root),
+  readDefectBook: (root) => ipcRenderer.invoke('defects:read', root),
+  verifyDefectBook: (root) => ipcRenderer.invoke('defects:verify', root),
+  inspectInbox: (root) => ipcRenderer.invoke('inbox:inspect', root),
+  readAuditEvents: (input) => ipcRenderer.invoke('audit:events', input),
+  previewDefectBookEditPlan: (input) => ipcRenderer.invoke('plan:defect-book-edit', input),
   applyPlan: (input) => ipcRenderer.invoke('transaction:apply', input),
   onTransactionProgress: (callback) => { const listener = (_event, progress) => callback(progress); ipcRenderer.on('transaction:progress', listener); return () => ipcRenderer.removeListener('transaction:progress', listener); },
   verifyPlan: (input) => ipcRenderer.invoke('transaction:verify', input)

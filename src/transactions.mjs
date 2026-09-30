@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import { buildRegistryPlan } from './catalog.mjs';
+import { buildDefectBookEditPlan } from './defects.mjs';
 import { inspectPlatformDirectory } from './inventory.mjs';
 import { buildIntegrationPlan } from './integration.mjs';
 import { assertPublishedVersion } from './plans.mjs';
@@ -14,6 +15,7 @@ import { atomicWrite, makeId, output, requirePlan, saveCheckpoint, writeAudit } 
 export function applyPlan({ plan, afterText = null, actor = 'local-user', auditRoot = defaultAuditRoot(), now = new Date().toISOString(), failAfterCheckpoint = false, onProgress = () => {} }) {
   requirePlan(plan);
   if (plan.kind === 'document-edit') return applyDocument(plan, afterText, { actor, auditRoot, now, failAfterCheckpoint });
+  if (plan.kind === 'defect-book-edit') return applyDefectBook(plan, afterText || plan.payload?.afterText, { actor, auditRoot, now, failAfterCheckpoint });
   if (plan.kind === 'resource-pointer') return applyPointer(plan, { actor, auditRoot, now, failAfterCheckpoint });
   if (plan.kind === 'platform-view') return applyPlatformView(plan, { actor, auditRoot, now, failAfterCheckpoint });
   if (plan.kind === 'registry-edit') return applyRegistry(plan, afterText || plan.payload?.afterText, { actor, auditRoot, now, failAfterCheckpoint });
@@ -118,6 +120,37 @@ function applyDocument(plan, afterText, context) {
     if (existsSync(saved.path)) atomicWrite(target, readFileSync(saved.path, 'utf8'), `${id}-restore`);
     const event = writeAudit({ ...context, transactionId: id, plan, action: 'document-edit', status: 'recovered-after-failure', target: relativeTarget, oldSha256: expectedOld, newSha256: expectedNew, checkpointSha256: saved.sha256, checkpointPath: saved.path, error: String(error?.message ?? error) });
     throw Object.assign(new Error(String(error?.message ?? error)), { audit: event, checkpointPath: saved.path });
+  }
+}
+
+function applyDefectBook(plan, afterText, context) {
+  const relativeTarget = safeRelative(plan.target?.path);
+  if (relativeTarget !== 'versions/缺陷状态簿.json') throw new Error('TRANSACTION_TARGET_NOT_ALLOWED');
+  const target = targetPath(plan.workspaceRoot, relativeTarget);
+  if (!existsSync(target) || !statSync(target).isFile()) throw new Error('TRANSACTION_TARGET_NOT_FOUND');
+  const before = readFileSync(target, 'utf8');
+  const expectedOld = plan.steps?.[0]?.oldSha256;
+  const expectedNew = plan.steps?.[0]?.newSha256;
+  const id = makeId(plan, context.now);
+  if (sha256(before) === expectedNew) return output(writeAudit({ ...context, transactionId: id, plan, action: 'defect-book-edit', status: 'already-applied', target: relativeTarget, oldSha256: expectedOld, newSha256: expectedNew }));
+  if (sha256(before) !== expectedOld) throw Object.assign(new Error('EXTERNAL_CHANGE_DETECTED'), { audit: writeAudit({ ...context, transactionId: id, plan, action: 'defect-book-edit', status: 'blocked-external-change', target: relativeTarget, oldSha256: expectedOld, newSha256: expectedNew, error: 'EXTERNAL_CHANGE_DETECTED' }) });
+  if (sha256(afterText) !== expectedNew) throw new Error('PLAN_PAYLOAD_MISMATCH');
+  const validated = buildDefectBookEditPlan({ workspaceRoot: plan.workspaceRoot, operation: plan.target.operation, rowId: plan.target.rowId, newStatus: plan.target.newStatus, row: plan.target.row ?? null, note: plan.target.note ?? null, baselineSha256: sha256(before) });
+  if (validated.steps[0].newSha256 !== expectedNew) throw new Error('PLAN_PAYLOAD_MISMATCH');
+  JSON.parse(afterText);
+  const saved = saveCheckpoint(context.auditRoot, id, before);
+  if (context.failAfterCheckpoint) {
+    const event = writeAudit({ ...context, transactionId: id, plan, action: 'defect-book-edit', status: 'interrupted-before-write', target: relativeTarget, oldSha256: expectedOld, newSha256: expectedNew, checkpointSha256: saved.sha256, checkpointPath: saved.path, error: 'SIMULATED_INTERRUPT' });
+    throw Object.assign(new Error('SIMULATED_INTERRUPT'), { audit: event, checkpointPath: saved.path });
+  }
+  try {
+    atomicWrite(target, afterText, id);
+    const actual = sha256(readFileSync(target, 'utf8'));
+    if (actual !== expectedNew) throw new Error('VERIFY_FAILED');
+    return output(writeAudit({ ...context, transactionId: id, plan, action: 'defect-book-edit', status: 'applied', target: relativeTarget, oldSha256: expectedOld, newSha256: expectedNew, checkpointSha256: saved.sha256, checkpointPath: saved.path, writePerformed: true }), saved.path);
+  } catch (error) {
+    if (existsSync(saved.path)) atomicWrite(target, readFileSync(saved.path, 'utf8'), `${id}-restore`);
+    throw Object.assign(new Error(String(error?.message ?? error)), { checkpointPath: saved.path });
   }
 }
 
@@ -226,6 +259,11 @@ export function verifyPlanTarget({ plan }) {
     const target = targetPath(plan.workspaceRoot, plan.target.path);
     const content = readFileSync(target, 'utf8');
     const actual = sha256(content);
+    return { schema: 'architecture-manager-verification/v1', ok: actual === plan.steps[0].newSha256, target: plan.target.path, actualSha256: actual, expectedSha256: plan.steps[0].newSha256, writePerformed: false };
+  }
+  if (plan.kind === 'defect-book-edit') {
+    const target = targetPath(plan.workspaceRoot, plan.target.path);
+    const actual = sha256(readFileSync(target, 'utf8'));
     return { schema: 'architecture-manager-verification/v1', ok: actual === plan.steps[0].newSha256, target: plan.target.path, actualSha256: actual, expectedSha256: plan.steps[0].newSha256, writePerformed: false };
   }
   if (plan.kind === 'resource-pointer') {

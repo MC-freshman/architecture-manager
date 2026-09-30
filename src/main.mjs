@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   applyPlan,
+  buildDefectBookEditPlan,
   buildDocumentPlan,
   buildGitPlan,
   buildIntegrationPlan,
@@ -20,9 +21,12 @@ import {
   inspectPlatformConnection,
   inspectRegistration,
   listIntegrationTargets,
+  listRunLedger,
   listSoftwareIntakes,
   listSoftwareRecoveries,
+  readAuditEvents,
   readCatalogEntry,
+  readDefectBook,
   readDocument,
   readIntegrationTarget,
   readSkillContent,
@@ -30,7 +34,9 @@ import {
   scanWorkspace,
   suggestPlatformBridge,
   runPlatformCheck,
-  verifyPlanTarget
+  verifyDefectBook,
+  verifyPlanTarget,
+  inspectInbox
 } from './app/api.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -94,6 +100,12 @@ function registerReadOnlyIpc() {
   ipcMain.handle('integration:read', (_event, input) => readIntegrationTarget(input));
   ipcMain.handle('platform:suggest-bridge', (_event, input) => suggestPlatformBridge(input));
   ipcMain.handle('plan:integration', (_event, input) => buildIntegrationPlan(input));
+  ipcMain.handle('runs:ledger', (_event, root) => listRunLedger(root));
+  ipcMain.handle('defects:read', (_event, root) => readDefectBook(root));
+  ipcMain.handle('defects:verify', (_event, root) => verifyDefectBook(root));
+  ipcMain.handle('inbox:inspect', (_event, root) => inspectInbox(root));
+  ipcMain.handle('audit:events', (_event, input) => readAuditEvents({ limit: input?.limit }));
+  ipcMain.handle('plan:defect-book-edit', (_event, input) => buildDefectBookEditPlan(input));
   ipcMain.handle('transaction:apply', (event, input) => applyPlan({ ...input, onProgress: (progress) => event.sender.send('transaction:progress', progress) }));
   ipcMain.handle('transaction:verify', (_event, input) => verifyPlanTarget(input));
 }
