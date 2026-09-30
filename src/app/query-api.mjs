@@ -14,4 +14,6 @@ export { readDefectBook, verifyDefectBook } from '../defects.mjs';
 export { inspectInbox } from '../inbox.mjs';
 export { readAuditEvents } from '../audit.mjs';
 export { listResourceReferences, readRegistryBaseline } from '../releases.mjs';
+export { parseImplementationTables } from '../plans-center.mjs';
+export { diffDocument } from '../docs-ops.mjs';
 

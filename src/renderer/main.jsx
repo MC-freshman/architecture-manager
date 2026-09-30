@@ -9,8 +9,10 @@ import {
   GitPanel,
   GovernancePanel,
   HelpPanel,
+  HomePulse,
   InboxPanel,
   IntegrationPanel,
+  PlanCenterPanel,
   PlanPreview,
   PlatformPanel,
   ReleasePanel,
@@ -482,6 +484,7 @@ function App() {
         <div className="notice" role="status" aria-live="polite"><strong>当前状态：</strong>{message}</div>
         {transactionProgress && <div className="notice" role="progressbar" aria-valuenow={transactionProgress.bytesTotal ? transactionProgress.bytesDone : transactionProgress.filesDone} aria-valuemin={0} aria-valuemax={transactionProgress.bytesTotal || transactionProgress.filesTotal}>正在处理 {transactionProgress.stage}：{transactionProgress.filesDone}/{transactionProgress.filesTotal} 个文件 · {transactionProgress.path}<progress value={transactionProgress.bytesTotal ? transactionProgress.bytesDone : transactionProgress.filesDone} max={transactionProgress.bytesTotal || transactionProgress.filesTotal} /></div>}
         <DashboardStats inventory={inventory} gitState={gitState} />
+        <HomePulse api={api} workspace={workspace} />
 
         <div className="panel-grid">
           <PlatformPanel inventory={inventory} showExcluded={showExcluded} setShowExcluded={setShowExcluded} addPlatformDirectory={addPlatformDirectory} previewPlatform={previewPlatform} checkPlatform={checkPlatform} busy={busy} />
@@ -490,7 +493,7 @@ function App() {
           <SafetyPanel />
           <HelpPanel />
           <ResourcePanel inventory={inventory} resources={resources} resourceFilter={resourceFilter} setResourceFilter={setResourceFilter} targetVersions={targetVersions} setTargetVersions={setTargetVersions} previewResource={previewResource} />
-          <DocumentPanel documentSummaries={documentSummaries} visibleDocuments={visibleDocuments} documentFilter={documentFilter} setDocumentFilter={setDocumentFilter} selectedDocument={selectedDocument} documentDraft={documentDraft} setDocumentDraft={setDocumentDraft} sensitiveConfirmed={sensitiveConfirmed} setSensitiveConfirmed={setSensitiveConfirmed} openDocument={openDocument} previewDocument={previewDocument} />
+          <DocumentPanel api={api} workspace={workspace} documentSummaries={documentSummaries} visibleDocuments={visibleDocuments} documentFilter={documentFilter} setDocumentFilter={setDocumentFilter} selectedDocument={selectedDocument} documentDraft={documentDraft} setDocumentDraft={setDocumentDraft} sensitiveConfirmed={sensitiveConfirmed} setSensitiveConfirmed={setSensitiveConfirmed} openDocument={openDocument} previewDocument={previewDocument} setMessage={setMessage} friendlyError={friendlyError} />
           <SoftwarePanel api={api} workspace={workspace} inventory={inventory} software={software} softwareResults={softwareResults} checkSoftware={checkSoftware} previewSoftwareLocation={previewSoftwareLocation} previewSoftware={previewSoftware} previewSoftwareImport={previewSoftwareImport} previewSoftwareRecipe={previewSoftwareRecipe} previewSoftwareRevert={previewSoftwareRevert} previewSoftwareConnectorLaunch={previewSoftwareConnectorLaunch} setMessage={setMessage} />
           <GitPanel gitDetails={gitDetails} workspace={workspace} refreshGit={refreshGit} previewGit={previewGit} sensitiveScan={sensitiveScan} />
           <RunsPanel api={api} workspace={workspace} />
@@ -498,6 +501,7 @@ function App() {
           <AuditPanel api={api} />
           <InboxPanel api={api} workspace={workspace} />
           <ReleasePanel api={api} workspace={workspace} resources={resources} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} setMessage={setMessage} friendlyError={friendlyError} />
+          <PlanCenterPanel api={api} workspace={workspace} />
         </div>
         <PlanPreview planPreview={planPreview} executePlan={executePlan} closePlan={() => { setPlanPreview(null); setPlanPayload(null); }} planWriteKinds={PLAN_WRITE_KINDS} />
       </section>

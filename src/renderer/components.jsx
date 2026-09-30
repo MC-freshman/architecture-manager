@@ -11,5 +11,7 @@ export { GovernancePanel } from './panels/governance.jsx';
 export { AuditPanel } from './panels/audit.jsx';
 export { InboxPanel } from './panels/inbox.jsx';
 export { ReleasePanel } from './panels/releases.jsx';
+export { PlanCenterPanel } from './panels/plancenter.jsx';
+export { HomePulse } from './panels/pulse.jsx';
 export { SafetyPanel, HelpPanel } from './panels/safety.jsx';
 export { PlanPreview } from './panels/plan-preview.jsx';

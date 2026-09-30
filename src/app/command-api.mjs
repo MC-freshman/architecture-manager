@@ -13,4 +13,5 @@ export { buildSoftwareRecipePlan } from '../software-publish.mjs';
 export { buildSoftwareRevertPlan } from '../software-recovery.mjs';
 export { buildReleasePlan } from '../releases.mjs';
 export { buildSoftwareConnectorLaunchPlan } from '../software-launch.mjs';
+export { buildDocsSite, checkDocsLinks } from '../docs-ops.mjs';
 

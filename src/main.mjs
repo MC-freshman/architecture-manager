@@ -17,6 +17,10 @@ import {
   buildSoftwareRecipePlan,
   buildSoftwareRevertPlan,
   buildSoftwareConnectorLaunchPlan,
+  buildDocsSite,
+  checkDocsLinks,
+  diffDocument,
+  parseImplementationTables,
   healthSoftware,
   inspectGit,
   inspectPlatformDirectory,
@@ -114,6 +118,10 @@ function registerReadOnlyIpc() {
   ipcMain.handle('releases:references', (_event, input) => listResourceReferences(input.workspaceRoot, input.repository, input.resourceId));
   ipcMain.handle('releases:registry-baseline', (_event, input) => readRegistryBaseline(input.workspaceRoot, input.kind));
   ipcMain.handle('plan:software-launch', (_event, input) => buildSoftwareConnectorLaunchPlan(input));
+  ipcMain.handle('plans:parse', (_event, root) => parseImplementationTables(root));
+  ipcMain.handle('docs:build', (_event, root) => buildDocsSite(root));
+  ipcMain.handle('docs:conform', (_event, root) => checkDocsLinks(root));
+  ipcMain.handle('document:diff', (_event, input) => diffDocument(input.workspaceRoot, input.relativePath));
   ipcMain.handle('transaction:apply', (event, input) => applyPlan({ ...input, onProgress: (progress) => event.sender.send('transaction:progress', progress) }));
   ipcMain.handle('transaction:verify', (_event, input) => verifyPlanTarget(input));
 }

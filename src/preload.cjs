@@ -43,6 +43,10 @@ contextBridge.exposeInMainWorld('architectureManager', Object.freeze({
   listResourceReferences: (input) => ipcRenderer.invoke('releases:references', input),
   readRegistryBaseline: (input) => ipcRenderer.invoke('releases:registry-baseline', input),
   previewSoftwareConnectorLaunchPlan: (input) => ipcRenderer.invoke('plan:software-launch', input),
+  parseImplementationTables: (root) => ipcRenderer.invoke('plans:parse', root),
+  buildDocsSite: (root) => ipcRenderer.invoke('docs:build', root),
+  checkDocsLinks: (root) => ipcRenderer.invoke('docs:conform', root),
+  documentDiff: (input) => ipcRenderer.invoke('document:diff', input),
   applyPlan: (input) => ipcRenderer.invoke('transaction:apply', input),
   onTransactionProgress: (callback) => { const listener = (_event, progress) => callback(progress); ipcRenderer.on('transaction:progress', listener); return () => ipcRenderer.removeListener('transaction:progress', listener); },
   verifyPlan: (input) => ipcRenderer.invoke('transaction:verify', input)
