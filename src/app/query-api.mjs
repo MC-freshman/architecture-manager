@@ -13,4 +13,5 @@ export { inspectRunDirectory, listPlatformRuns, listRunLedger } from '../runs.mj
 export { readDefectBook, verifyDefectBook } from '../defects.mjs';
 export { inspectInbox } from '../inbox.mjs';
 export { readAuditEvents } from '../audit.mjs';
+export { listResourceReferences, readRegistryBaseline } from '../releases.mjs';
 

@@ -11,13 +11,13 @@ test('renderer domains stay split and write kinds remain centralized', () => {
   const source = [
     'stats.jsx', 'platform.jsx', 'integration.jsx', 'catalog.jsx',
     'resources.jsx', 'documents.jsx', 'software.jsx', 'git.jsx',
-    'safety.jsx', 'plan-preview.jsx', 'runs.jsx', 'governance.jsx', 'audit.jsx', 'inbox.jsx'
+    'safety.jsx', 'plan-preview.jsx', 'runs.jsx', 'governance.jsx', 'audit.jsx', 'inbox.jsx', 'releases.jsx'
   ].map((file) => readFileSync(join(root, 'src', 'renderer', 'panels', file), 'utf8')).join('\n');
   const domains = [
     'DashboardStats', 'PlatformPanel', 'IntegrationPanel', 'CatalogPanel',
     'ResourcePanel', 'DocumentPanel', 'SoftwarePanel', 'GitPanel',
     'SafetyPanel', 'HelpPanel', 'PlanPreview',
-    'RunsPanel', 'GovernancePanel', 'AuditPanel', 'InboxPanel'
+    'RunsPanel', 'GovernancePanel', 'AuditPanel', 'InboxPanel', 'ReleasePanel'
   ];
   for (const domain of domains) {
     assert.match(source, new RegExp(`export function ${domain}\\b`), domain);
@@ -26,7 +26,7 @@ test('renderer domains stay split and write kinds remain centralized', () => {
   assert.deepEqual(PLAN_WRITE_KINDS, [
     'document-edit', 'defect-book-edit', 'resource-pointer', 'platform-view', 'registry-edit',
     'integration-config', 'integration-registry', 'software-import', 'software-recipe-publish', 'software-revert',
-    'git-commit', 'git-branch', 'git-tag', 'git-push', 'git-rollback', 'git-backup'
+    'git-commit', 'git-branch', 'git-tag', 'git-push', 'git-rollback', 'git-backup', 'release-publish'
   ]);
   assert.match(friendlyError(new Error('EXTERNAL_CHANGE_DETECTED')), /目标文件已被其他程序修改/);
 });

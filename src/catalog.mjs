@@ -28,6 +28,7 @@ function toRelative(root, target) {
 function registryInfo(kind) {
   if (kind === 'agent') return { relativePath: 'agent/registry.json', key: 'agents', base: 'agent' };
   if (kind === 'skill') return { relativePath: 'tool/registry.json', key: 'skills', base: 'tool' };
+  if (kind === 'workflow') return { relativePath: 'tool/registry.json', key: 'workflows', base: 'tool' };
   throw new Error('INVALID_CATALOG_KIND');
 }
 
@@ -176,6 +177,13 @@ export function buildRegistryPlan({ workspaceRoot, kind, action, id, baselineSha
     requireUnreferenced(root, kind, id, items[index]);
     nextItems = items.filter((item) => item.id !== id);
     description = `从 registry 移除 ${kind} ${id}（不删除已发布目录）`;
+  } else if (action === 'mark') {
+    if (index < 0) throw new Error('CATALOG_ENTRY_NOT_FOUND');
+    const supersededBy = typeof entry.supersededBy === 'string' && entry.supersededBy.trim() !== '' ? entry.supersededBy : null;
+    if (!supersededBy) throw new Error('CATALOG_SUPERSEDED_BY_REQUIRED');
+    const deprecationNote = typeof entry.deprecationNote === 'string' ? entry.deprecationNote : null;
+    nextItems = items.map((item) => item.id === id ? { ...item, deprecated: true, supersededBy, ...(deprecationNote ? { deprecationNote } : {}) } : item);
+    description = `标记 ${kind} ${id} 为 deprecated（supersededBy=${supersededBy}）；不改 enabled，已钉版的 run 仍可解析`;
   } else if (action === 'enable' || action === 'disable') {
     if (index < 0) throw new Error('CATALOG_ENTRY_NOT_FOUND');
     if (action === 'disable') requireUnreferenced(root, kind, id, items[index]);

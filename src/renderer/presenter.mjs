@@ -14,7 +14,8 @@ export const PLAN_WRITE_KINDS = [
   'git-tag',
   'git-push',
   'git-rollback',
-  'git-backup'
+  'git-backup',
+  'release-publish'
 ];
 
 export function friendlyError(error) {
@@ -55,7 +56,15 @@ export function friendlyError(error) {
     GIT_COMMAND_FAILED: 'Git 命令执行失败，见详情；未做任何自动恢复。',
     GIT_BACKUP_DESTINATION_INVALID: '备份目标必须位于 inbox/archive 之下。',
     INVALID_BRANCH_NAME: '分支名不合法。',
-    INVALID_TAG_NAME: '标签名不合法。'
+    INVALID_TAG_NAME: '标签名不合法。',
+    RELEASE_VERSION_EXISTS: '目标版本目录已存在；已发布版本不可覆盖，请换一个 semver 版本号。',
+    RELEASE_SEMVER_INVALID: '版本号必须是严格的 x.y.z。',
+    RELEASE_RESOURCE_ID_INVALID: '资源 ID 不合法。',
+    RELEASE_REPOSITORY_INVALID: '仓库只能是 tool 或 agent。',
+    RESOURCE_NOT_FOUND: '找不到该资源目录或 current.json。',
+    RELEASE_UPGRADE_SOURCE_MISSING: '升级来源版本目录不存在。',
+    RELEASE_MANIFEST_VERSION_MISMATCH: 'manifest 版本与目标版本不一致，请重新生成计划。',
+    CATALOG_SUPERSEDED_BY_REQUIRED: '标记 deprecated 必须提供 supersededBy。'
   };
   return hints[key] ? `${hints[key]}（${key}）${details.length ? `\n${details.join(':').trim()}` : ''}` : code;
 }

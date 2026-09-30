@@ -12,10 +12,10 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 test('application boundary exposes the complete IPC domain surface', () => {
   const expected = [
     'applyPlan', 'buildDefectBookEditPlan', 'buildDocumentPlan', 'buildGitPlan', 'buildIntegrationPlan',
-    'buildPlatformViewPlan', 'buildRegistryPlan', 'buildResourcePointerPlan',
+    'buildPlatformViewPlan', 'buildRegistryPlan', 'buildReleasePlan', 'buildResourcePointerPlan',
     'buildSoftwareImportPlan', 'buildSoftwareLaunchPlan', 'buildSoftwareRecipePlan', 'buildSoftwareRevertPlan', 'healthSoftware', 'inspectGit',
-    'inspectPlatformConnection', 'inspectPlatformDirectory', 'inspectRegistration', 'listIntegrationTargets', 'listSoftwareIntakes', 'listSoftwareRecoveries',
-    'readCatalogEntry', 'readDocument', 'readIntegrationTarget', 'readSkillContent',
+    'inspectPlatformConnection', 'inspectPlatformDirectory', 'inspectRegistration', 'listIntegrationTargets', 'listResourceReferences', 'listSoftwareIntakes', 'listSoftwareRecoveries',
+    'readCatalogEntry', 'readDocument', 'readIntegrationTarget', 'readRegistryBaseline', 'readSkillContent',
     'inspectRunDirectory', 'listPlatformRuns', 'listRunLedger',
     'readDefectBook', 'verifyDefectBook', 'inspectInbox', 'readAuditEvents',
     'runPlatformCheck', 'scanSensitiveFiles', 'scanWorkspace', 'suggestPlatformBridge', 'verifyPlanTarget', 'verifySoftwareImport', 'verifySoftwareRecipe'

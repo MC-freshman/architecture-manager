@@ -2,6 +2,7 @@ import { existsSync, readFileSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import { buildRegistryPlan } from './catalog.mjs';
 import { buildDefectBookEditPlan } from './defects.mjs';
 import { applyGitTransaction, verifyGitTransaction } from './git-executor.mjs';
+import { applyRelease, verifyRelease } from './releases.mjs';
 import { inspectPlatformDirectory } from './inventory.mjs';
 import { buildIntegrationPlan } from './integration.mjs';
 import { assertPublishedVersion } from './plans.mjs';
@@ -18,6 +19,7 @@ export function applyPlan({ plan, afterText = null, actor = 'local-user', auditR
   if (plan.kind === 'document-edit') return applyDocument(plan, afterText, { actor, auditRoot, now, failAfterCheckpoint });
   if (plan.kind === 'defect-book-edit') return applyDefectBook(plan, afterText || plan.payload?.afterText, { actor, auditRoot, now, failAfterCheckpoint });
   if (plan.kind?.startsWith('git-')) return applyGitTransaction({ plan, actor, auditRoot, now });
+  if (plan.kind === 'release-publish') return applyRelease(plan, { actor, auditRoot, now, failAfterCheckpoint });
   if (plan.kind === 'resource-pointer') return applyPointer(plan, { actor, auditRoot, now, failAfterCheckpoint });
   if (plan.kind === 'platform-view') return applyPlatformView(plan, { actor, auditRoot, now, failAfterCheckpoint });
   if (plan.kind === 'registry-edit') return applyRegistry(plan, afterText || plan.payload?.afterText, { actor, auditRoot, now, failAfterCheckpoint });
@@ -255,6 +257,7 @@ function applyIntegration(plan, afterText, context) {
 export function verifyPlanTarget({ plan }) {
   requirePlan(plan);
   if (plan.kind?.startsWith('git-')) return verifyGitTransaction({ plan });
+  if (plan.kind === 'release-publish') return verifyRelease({ plan });
   if (plan.kind === 'software-import') return verifySoftwareImport({ plan });
   if (plan.kind === 'software-recipe-publish') return verifySoftwareRecipe({ plan });
   if (plan.kind === 'software-revert') return verifySoftwareRevert({ plan });

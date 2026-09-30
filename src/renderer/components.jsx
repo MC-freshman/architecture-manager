@@ -10,5 +10,6 @@ export { RunsPanel } from './panels/runs.jsx';
 export { GovernancePanel } from './panels/governance.jsx';
 export { AuditPanel } from './panels/audit.jsx';
 export { InboxPanel } from './panels/inbox.jsx';
+export { ReleasePanel } from './panels/releases.jsx';
 export { SafetyPanel, HelpPanel } from './panels/safety.jsx';
 export { PlanPreview } from './panels/plan-preview.jsx';

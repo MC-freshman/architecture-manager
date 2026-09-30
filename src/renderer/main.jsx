@@ -13,6 +13,7 @@ import {
   IntegrationPanel,
   PlanPreview,
   PlatformPanel,
+  ReleasePanel,
   ResourcePanel,
   RunsPanel,
   SafetyPanel,
@@ -483,6 +484,7 @@ function App() {
           <GovernancePanel api={api} workspace={workspace} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} setMessage={setMessage} friendlyError={friendlyError} />
           <AuditPanel api={api} />
           <InboxPanel api={api} workspace={workspace} />
+          <ReleasePanel api={api} workspace={workspace} resources={resources} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} setMessage={setMessage} friendlyError={friendlyError} />
         </div>
         <PlanPreview planPreview={planPreview} executePlan={executePlan} closePlan={() => { setPlanPreview(null); setPlanPayload(null); }} planWriteKinds={PLAN_WRITE_KINDS} />
       </section>

@@ -10,6 +10,7 @@ import {
   buildIntegrationPlan,
   buildPlatformViewPlan,
   buildRegistryPlan,
+  buildReleasePlan,
   buildResourcePointerPlan,
   buildSoftwareLaunchPlan,
   buildSoftwareImportPlan,
@@ -21,6 +22,7 @@ import {
   inspectPlatformConnection,
   inspectRegistration,
   listIntegrationTargets,
+  listResourceReferences,
   listRunLedger,
   listSoftwareIntakes,
   listSoftwareRecoveries,
@@ -30,6 +32,7 @@ import {
   readDocument,
   readIntegrationTarget,
   readSkillContent,
+  readRegistryBaseline,
   scanSensitiveFiles,
   scanWorkspace,
   suggestPlatformBridge,
@@ -106,6 +109,9 @@ function registerReadOnlyIpc() {
   ipcMain.handle('inbox:inspect', (_event, root) => inspectInbox(root));
   ipcMain.handle('audit:events', (_event, input) => readAuditEvents({ limit: input?.limit }));
   ipcMain.handle('plan:defect-book-edit', (_event, input) => buildDefectBookEditPlan(input));
+  ipcMain.handle('plan:release', (_event, input) => buildReleasePlan(input));
+  ipcMain.handle('releases:references', (_event, input) => listResourceReferences(input.workspaceRoot, input.repository, input.resourceId));
+  ipcMain.handle('releases:registry-baseline', (_event, input) => readRegistryBaseline(input.workspaceRoot, input.kind));
   ipcMain.handle('transaction:apply', (event, input) => applyPlan({ ...input, onProgress: (progress) => event.sender.send('transaction:progress', progress) }));
   ipcMain.handle('transaction:verify', (_event, input) => verifyPlanTarget(input));
 }

@@ -11,4 +11,5 @@ export { runPlatformCheck } from '../platform-check.mjs';
 export { buildSoftwareImportPlan } from '../software-intake.mjs';
 export { buildSoftwareRecipePlan } from '../software-publish.mjs';
 export { buildSoftwareRevertPlan } from '../software-recovery.mjs';
+export { buildReleasePlan } from '../releases.mjs';
 
