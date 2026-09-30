@@ -3,12 +3,12 @@
 // and produce the real-submission instruction card. Creating a first-level
 // directory requires the user's explicit confirmation flag (the BP-1
 // authorization act) and never runs without a plan.
-import { existsSync, mkdirSync, readFileSync, unlinkSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, rmdirSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { isFormalPlatform, PLATFORM_IDS } from './core/platforms.mjs';
 import { sha256 } from './core/hash.mjs';
 import { targetPath } from './core/paths.mjs';
-import { atomicWrite, makeId, output, requirePlan, writeAudit } from './transactions/kernel.mjs';
+import { atomicWrite, makeId, output, requirePlan, saveCheckpoint, writeAudit } from './transactions/kernel.mjs';
 import { inspectPlatformConnection, runPlatformCheck } from './platform-check.mjs';
 
 const PLATFORM_ID = /^[a-z][a-z0-9-]{1,30}$/;
@@ -117,28 +117,52 @@ export function buildPlatformScaffoldPlan({ workspaceRoot, platformId, displayNa
 export function applyPlatformScaffold(plan, context) {
   requirePlan(plan);
   const root = resolve(plan.workspaceRoot);
-  const platformRoot = join(root, plan.target.platformId);
+  if (plan.target?.userAuthorized !== true || plan.target.directory !== plan.target.platformId) throw new Error('INVALID_PLATFORM_SCAFFOLD_PLAN');
+  const expected = buildPlatformScaffoldPlan({ workspaceRoot: root, platformId: plan.target.platformId, displayName: plan.target.displayName, confirmed: true, now: plan.generatedAt });
+  if (JSON.stringify(plan.payload?.files) !== JSON.stringify(expected.payload.files)) throw new Error('PLAN_PAYLOAD_MISMATCH');
+  const platformRoot = targetPath(root, plan.target.platformId);
   if (existsSync(platformRoot)) throw new Error('PLATFORM_DIRECTORY_EXISTS');
   const id = makeId(plan, context.now);
   const created = [];
+  const directories = new Set();
   for (const file of plan.payload.files) {
-    if (existsSync(join(root, file.path))) throw new Error('PLATFORM_SCAFFOLD_TARGET_EXISTS');
+    if (existsSync(targetPath(root, file.path))) throw new Error('PLATFORM_SCAFFOLD_TARGET_EXISTS');
   }
+  const checkpoint = saveCheckpoint(context.auditRoot, id, JSON.stringify({ kind: plan.kind, platformId: plan.target.platformId, files: plan.payload.files.map((file) => ({ path: file.path, before: null, newSha256: sha256(file.content) })) }));
   try {
+    mkdirSync(platformRoot);
+    directories.add(platformRoot);
     for (const file of plan.payload.files) {
-      const target = join(root, file.path);
-      mkdirSync(join(target, '..'), { recursive: true });
+      const target = targetPath(root, file.path);
+      if (existsSync(target)) throw new Error('PLATFORM_SCAFFOLD_TARGET_EXISTS');
+      let directory = dirname(target);
+      while (directory.startsWith(platformRoot) && !existsSync(directory)) { directories.add(directory); directory = dirname(directory); }
+      mkdirSync(dirname(target), { recursive: true });
       atomicWrite(target, file.content, id);
       created.push(target);
     }
-    const event = writeAudit({ ...context, transactionId: id, plan, action: 'platform-scaffold', status: 'applied', target: plan.target.directory, newSha256: sha256(plan.payload.files.map((file) => file.path).join('\n')), writePerformed: true });
-    return output(event);
+    const event = writeAudit({ ...context, transactionId: id, plan, action: 'platform-scaffold', status: 'applied', target: plan.target.directory, newSha256: sha256(JSON.stringify(plan.payload.files)), checkpointPath: checkpoint.path, checkpointSha256: checkpoint.sha256, writePerformed: true });
+    return output(event, checkpoint.path);
   } catch (error) {
     for (const path of created) {
       try { unlinkSync(path); } catch { /* leave diagnostic */ }
     }
+    for (const directory of [...directories].sort((a, b) => b.length - a.length)) { try { rmdirSync(directory); } catch { /* Never remove somebody else's new files. */ } }
+    writeAudit({ ...context, transactionId: id, plan, action: 'platform-scaffold', status: 'failed-restored', target: plan.target.directory, checkpointPath: checkpoint.path, checkpointSha256: checkpoint.sha256, error: String(error.message) });
     throw error;
   }
+}
+
+export function verifyPlatformScaffold(plan) {
+  requirePlan(plan);
+  const expected = plan.payload?.files;
+  if (!Array.isArray(expected) || expected.length !== 6) throw new Error('INVALID_PLATFORM_SCAFFOLD_PLAN');
+  const files = expected.map((file) => {
+    const path = targetPath(plan.workspaceRoot, file.path);
+    const actual = existsSync(path) ? sha256(readFileSync(path)) : null;
+    return { path: file.path, ok: actual === sha256(file.content), actualSha256: actual };
+  });
+  return { schema: 'architecture-manager-verification/v1', ok: files.every((file) => file.ok), files, writePerformed: false };
 }
 
 export function governanceOnboardingDraft(workspaceRoot, platformId) {
@@ -173,21 +197,21 @@ export function buildOnboardingCard(workspaceRoot, platformId) {
 // One-click pipeline (3.5.0 P8): precheck -> quick conform -> optional full
 // matrix, stopping at the first failed stage. Runs the platform's own checks
 // (runPlatformCheck writes evidence under the platform's runtime/manager-check).
-export function runOnboardingPipeline({ workspaceRoot, platformId, includeMatrix = false }) {
+export async function runOnboardingPipeline({ workspaceRoot, platformId, includeMatrix = false }, { inspect = inspectPlatformConnection, check = runPlatformCheck } = {}) {
   const steps = [];
   let precheck;
   try {
-    precheck = inspectPlatformConnection({ workspaceRoot, platformId });
+    precheck = inspect({ workspaceRoot, platformId });
   } catch (error) {
     precheck = { ok: false, error: String(error?.message ?? error) };
   }
   steps.push({ step: 'precheck', result: precheck });
-  if (precheck.ok === false || precheck.valid === false) return { platformId, steps, stoppedAt: 'precheck' };
-  const quick = runPlatformCheck({ workspaceRoot, platformId, mode: 'quick' });
+  if (!['configured', 'callable', 'complete', 'check-failed'].includes(precheck.stage)) return { platformId, steps, stoppedAt: 'precheck' };
+  const quick = await check({ workspaceRoot, platformId, mode: 'quick' });
   steps.push({ step: 'conform-quick', result: quick });
   if (quick.issues?.length > 0) return { platformId, steps, stoppedAt: 'conform-quick' };
   if (includeMatrix) {
-    const full = runPlatformCheck({ workspaceRoot, platformId, mode: 'full' });
+    const full = await check({ workspaceRoot, platformId, mode: 'full' });
     steps.push({ step: 'matrix-full', result: full });
     if (full.issues?.length > 0) return { platformId, steps, stoppedAt: 'matrix-full' };
   }

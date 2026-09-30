@@ -5,7 +5,7 @@ import { defaultAuditRoot } from './core/paths.mjs';
 import { makeId, output, saveCheckpoint, writeAudit } from './transactions/kernel.mjs';
 import { inside } from './core/json.mjs';
 
-import { isFormalPlatform } from './core/platforms.mjs';
+import { isRegisteredPlatform } from './core/platforms.mjs';
 const SOFTWARE_ID = /^[a-z0-9][a-z0-9._-]*$/;
 const KINDS = new Set(['portable-file', 'unpacked-directory', 'installer']);
 
@@ -63,7 +63,7 @@ function assertRows(directory, rows) {
 
 export function buildSoftwareImportPlan({ workspaceRoot, platformId, softwareId, sourcePath, intakeKind, now = new Date().toISOString() }) {
   const root = resolve(workspaceRoot);
-  if (!isFormalPlatform(platformId) || !SOFTWARE_ID.test(softwareId) || !KINDS.has(intakeKind)) throw new Error('INVALID_SOFTWARE_INTAKE');
+  if (!isRegisteredPlatform(platformId, root) || !SOFTWARE_ID.test(softwareId) || !KINDS.has(intakeKind)) throw new Error('INVALID_SOFTWARE_INTAKE');
   const platformRoot = join(root, platformId);
   if (!existsSync(platformRoot) || !lstatSync(platformRoot).isDirectory()) throw new Error('PLATFORM_DIRECTORY_NOT_FOUND');
   const source = resolve(sourcePath);

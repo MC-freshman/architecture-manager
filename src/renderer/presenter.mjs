@@ -1,4 +1,6 @@
 export const PLAN_WRITE_KINDS = [
+  'platform-scaffold',
+  'platform-configuration',
   'document-edit',
   'defect-book-edit',
   'resource-pointer',
@@ -24,6 +26,11 @@ export function friendlyError(error) {
   const [key, ...details] = code.split(':');
   const hints = {
     DOCUMENT_BASELINE_MISMATCH: '文档在读取后发生了变化，请重新打开文档再编辑。',
+    PLATFORM_CONFIGURATION_PATH_MISMATCH: '环境、证据和配置必须属于所选平台，请选择它自己的目录。',
+    INVALID_PLATFORM_ID: '平台 ID 需为 2–31 位小写英文字母、数字或连字符，不能使用三仓等保留目录名。',
+    PLAN_PAYLOAD_MISMATCH: '计划内容或版本已变化，请重新读取目标再生成计划。',
+    PLATFORM_SCAFFOLD_CONFIRMATION_REQUIRED: '创建新平台目录前，请勾选目录创建确认。',
+    CLIENT_ARGUMENTS_INVALID: '客户端参数需要逐项填写，不能输入任意拼接命令。',
     EXTERNAL_CHANGE_DETECTED: '目标文件已被其他程序修改，管理台已阻止覆盖，请重新扫描。',
     TOP_LEVEL_CONFIRMATION_REQUIRED: '顶层治理文件需要勾选确认后才能生成计划。',
     TARGET_VERSION_UNAVAILABLE: '目标版本不在当前共享仓目录中，请先确认版本已发布。',

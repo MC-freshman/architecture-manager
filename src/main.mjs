@@ -19,6 +19,8 @@ import {
   buildSoftwareConnectorLaunchPlan,
   buildDocsSite,
   buildPlatformScaffoldPlan,
+  buildOnboardingConfigPlan,
+  readOnboardingConfig,
   buildOnboardingCard,
   buildWorkspaceClonePlan,
   applyWorkspaceClone,
@@ -129,6 +131,12 @@ function registerIpc() {
   ipcMain.handle('docs:conform', (_event, root) => checkDocsLinks(root));
   ipcMain.handle('document:diff', (_event, input) => diffDocument(input.workspaceRoot, input.relativePath));
   ipcMain.handle('plan:platform-scaffold', (_event, input) => buildPlatformScaffoldPlan(input));
+  ipcMain.handle('onboarding:config', (_event, input) => readOnboardingConfig(input));
+  ipcMain.handle('plan:platform-configuration', (_event, input) => buildOnboardingConfigPlan(input));
+  ipcMain.handle('onboarding:select-file', async () => {
+    const result = await dialog.showOpenDialog({ title: '选择解释器、客户端入口或配置文件', properties: ['openFile'] });
+    return result.canceled ? null : result.filePaths[0];
+  });
   ipcMain.handle('onboarding:draft', (_event, input) => governanceOnboardingDraft(input.workspaceRoot, input.platformId));
   ipcMain.handle('onboarding:card', (_event, input) => buildOnboardingCard(input.workspaceRoot, input.platformId));
   ipcMain.handle('onboarding:pipeline', (_event, input) => runOnboardingPipeline(input));

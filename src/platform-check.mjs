@@ -6,7 +6,7 @@ import { inside, readJson } from './core/json.mjs';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
-import { isFormalPlatform } from './core/platforms.mjs';
+import { isRegisteredPlatform } from './core/platforms.mjs';
 
 function fail(stage, issues, extra = {}) { return { schema: 'architecture-manager-platform-check/v1', stage, issues, ...extra, writePerformed: false }; }
 function reportGaps(report) {
@@ -16,7 +16,7 @@ function reportGaps(report) {
 export function inspectPlatformConnection({ workspaceRoot, platformId }) {
   const root = resolve(workspaceRoot);
   if (!existsSync(root) || !statSync(root).isDirectory()) throw new Error('WORKSPACE_NOT_FOUND');
-  if (!isFormalPlatform(platformId)) throw new Error('UNKNOWN_PLATFORM_ID');
+  if (!isRegisteredPlatform(platformId, root)) throw new Error('UNKNOWN_PLATFORM_ID');
   const platformRoot = join(root, platformId);
   if (!existsSync(platformRoot) || !statSync(platformRoot).isDirectory()) return fail('missing-directory', ['平台目录不存在']);
   const canonical = join(platformRoot, 'bridge.json');

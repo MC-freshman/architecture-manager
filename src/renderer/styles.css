@@ -162,3 +162,13 @@ body { background: var(--bg); color: var(--text); }
 .wizard-field > label { white-space: nowrap; color: var(--muted); font-size: 13px; }
 .wizard-field > input, .wizard-field > select { width: 100%; min-width: 0; }
 .wizard-section { font-weight: 600; margin: 14px 0 6px; color: var(--accent); font-size: 14px; }
+.onboarding-steps, .onboarding-versions, .onboarding-footer { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 14px 0; }
+.onboarding-field { display: grid; grid-template-columns: minmax(130px, 200px) minmax(0, 1fr); align-items: center; gap: 12px; margin: 14px 0; }
+.onboarding-field input, .onboarding-field select, .onboarding-field textarea { width: 100%; min-width: 0; }
+.onboarding-field textarea { min-height: 75px; }
+.onboarding-input { display: flex; gap: 8px; min-width: 0; }
+.onboarding-input input { flex: 1; }
+.onboarding-input button { flex-shrink: 0; }
+.onboarding-error { padding: 12px; color: var(--bad); background: var(--bad-bg); white-space: pre-wrap; overflow-wrap: anywhere; }
+.onboarding-result { margin-top: 16px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; max-height: 38vh; overflow: auto; }
+.onboarding-footer { justify-content: space-between; border-top: 1px solid var(--line); padding-top: 12px; }

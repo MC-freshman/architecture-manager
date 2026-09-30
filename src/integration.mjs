@@ -3,7 +3,7 @@ import { sha256 } from './core/hash.mjs';
 import { join, relative, resolve, sep } from 'node:path';
 
 const RESOURCE_KINDS = new Set(['tool', 'agent', 'software']);
-import { isFormalPlatform } from './core/platforms.mjs';
+import { isRegisteredPlatform } from './core/platforms.mjs';
 import { buildResourcePointerPlan } from './plans.mjs';
 const ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const SECRET_KEYS = /(password|passwd|secret|token|api[_-]?key|private[_-]?key|access[_-]?key)/i;
@@ -44,7 +44,7 @@ function readText(root, path) {
 
 function platformCandidates(root, platformId) {
   assertId(platformId, 'INVALID_PLATFORM_ID');
-  if (!isFormalPlatform(platformId)) throw new Error('UNKNOWN_PLATFORM_ID');
+  if (!isRegisteredPlatform(platformId, root)) throw new Error('UNKNOWN_PLATFORM_ID');
   const platformRoot = join(root, platformId);
   if (!existsSync(platformRoot) || !statSync(platformRoot).isDirectory()) return [];
   return [`${platformId}/bridge.json`];

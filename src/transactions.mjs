@@ -4,7 +4,8 @@ import { buildDefectBookEditPlan } from './defects.mjs';
 import { applyGitTransaction, verifyGitTransaction } from './git-executor.mjs';
 import { applyRelease, verifyRelease } from './releases.mjs';
 import { applySoftwareLaunch } from './software-launch.mjs';
-import { applyPlatformScaffold } from './onboarding.mjs';
+import { applyPlatformScaffold, verifyPlatformScaffold } from './onboarding.mjs';
+import { applyOnboardingConfig, verifyOnboardingConfig } from './onboarding-config.mjs';
 import { inspectPlatformDirectory } from './inventory.mjs';
 import { buildIntegrationPlan } from './integration.mjs';
 import { assertPublishedVersion } from './plans.mjs';
@@ -24,6 +25,7 @@ export function applyPlan({ plan, afterText = null, actor = 'local-user', auditR
   if (plan.kind === 'release-publish') return applyRelease(plan, { actor, auditRoot, now, failAfterCheckpoint });
   if (plan.kind === 'software-launch') return applySoftwareLaunch({ plan }, { actor, auditRoot, now });
   if (plan.kind === 'platform-scaffold') return applyPlatformScaffold(plan, { actor, auditRoot, now });
+  if (plan.kind === 'platform-configuration') return applyOnboardingConfig(plan, { actor, auditRoot, now });
   if (plan.kind === 'resource-pointer') return applyPointer(plan, { actor, auditRoot, now, failAfterCheckpoint });
   if (plan.kind === 'platform-view') return applyPlatformView(plan, { actor, auditRoot, now, failAfterCheckpoint });
   if (plan.kind === 'registry-edit') return applyRegistry(plan, afterText || plan.payload?.afterText, { actor, auditRoot, now, failAfterCheckpoint });
@@ -260,6 +262,8 @@ function applyIntegration(plan, afterText, context) {
 
 export function verifyPlanTarget({ plan }) {
   requirePlan(plan);
+  if (plan.kind === 'platform-scaffold') return verifyPlatformScaffold(plan);
+  if (plan.kind === 'platform-configuration') return verifyOnboardingConfig(plan);
   if (plan.kind?.startsWith('git-')) return verifyGitTransaction({ plan });
   if (plan.kind === 'release-publish') return verifyRelease({ plan });
   if (plan.kind === 'software-launch') return { schema: 'architecture-manager-verification/v1', ok: true, target: `${plan.target.platformId}/${plan.target.softwareId}`, note: 'launch outcomes live in the connector reply recorded by the audit event', writePerformed: false };

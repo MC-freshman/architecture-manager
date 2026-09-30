@@ -4,8 +4,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { allPlatformIds } from '../src/core/platforms.mjs';
-import { applyPlan } from '../src/transactions.mjs';
-import { buildOnboardingCard, buildPlatformScaffoldPlan, governanceOnboardingDraft } from '../src/onboarding.mjs';
+import { applyPlan, verifyPlanTarget } from '../src/transactions.mjs';
+import { buildOnboardingCard, buildPlatformScaffoldPlan, governanceOnboardingDraft, runOnboardingPipeline } from '../src/onboarding.mjs';
 
 function makeWorkspace() {
   const root = mkdtempSync(join(tmpdir(), 'am-onboard-'));
@@ -20,6 +20,7 @@ test('scaffold plan creates a platform directory only with explicit confirmation
   const plan = buildPlatformScaffoldPlan({ workspaceRoot: fixture.root, platformId: 'newp', displayName: 'New Platform', confirmed: true });
   assert.equal(plan.kind, 'platform-scaffold');
   applyPlan({ plan, auditRoot: fixture.auditRoot });
+  assert.equal(verifyPlanTarget({ plan }).ok, true);
   const config = JSON.parse(readFileSync(join(fixture.root, 'newp', 'bridge', 'newp-config.json'), 'utf8'));
   assert.equal(config.platform, 'newp');
   assert.ok(Array.isArray(config.pendingKeys));
@@ -29,6 +30,29 @@ test('scaffold plan creates a platform directory only with explicit confirmation
   assert.throws(() => buildPlatformScaffoldPlan({ workspaceRoot: fixture.root, platformId: 'newp', confirmed: true }), /PLATFORM_DIRECTORY_EXISTS/);
   rmSync(fixture.root, { recursive: true, force: true });
   rmSync(fixture.auditRoot, { recursive: true, force: true });
+});
+
+test('forged scaffold payload never writes outside its generated target', () => {
+  const fixture = makeWorkspace();
+  const plan = buildPlatformScaffoldPlan({ workspaceRoot: fixture.root, platformId: 'newp', confirmed: true });
+  plan.payload.files[0].path = '../escaped.json';
+  assert.throws(() => applyPlan({ plan, auditRoot: fixture.auditRoot }), /PLAN_PAYLOAD_MISMATCH/);
+  assert.equal(existsSync(join(fixture.root, 'newp')), false);
+  rmSync(fixture.root, { recursive: true, force: true });
+  rmSync(fixture.auditRoot, { recursive: true, force: true });
+});
+
+test('pipeline awaits the check and stops on its actual gap result', async () => {
+  const calls = [];
+  const report = await runOnboardingPipeline({ workspaceRoot: 'fixture', platformId: 'newp', includeMatrix: true }, {
+    inspect: () => ({ stage: 'configured' }),
+    check: async ({ mode }) => { calls.push(mode); await new Promise((resolve) => setTimeout(resolve, 10)); return { issues: ['gap'], stage: 'callable' }; }
+  });
+  assert.deepEqual(calls, ['quick']);
+  assert.equal(report.stoppedAt, 'conform-quick');
+  assert.equal(report.steps[1].result.stage, 'callable');
+  const invalid = await runOnboardingPipeline({ workspaceRoot: 'fixture', platformId: 'newp' }, { inspect: () => ({ stage: 'invalid-bridge' }), check: () => { throw new Error('must-not-dispatch'); } });
+  assert.equal(invalid.stoppedAt, 'precheck');
 });
 
 test('scaffold failure cleans up created files', () => {

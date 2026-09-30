@@ -15,5 +15,6 @@ export { buildReleasePlan } from '../releases.mjs';
 export { buildSoftwareConnectorLaunchPlan } from '../software-launch.mjs';
 export { buildDocsSite, checkDocsLinks } from '../docs-ops.mjs';
 export { buildPlatformScaffoldPlan } from '../onboarding.mjs';
+export { buildOnboardingConfigPlan } from '../onboarding-config.mjs';
 export { buildWorkspaceClonePlan, applyWorkspaceClone } from '../workspace-bootstrap.mjs';
 

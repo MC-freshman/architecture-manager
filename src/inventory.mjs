@@ -30,7 +30,7 @@ export const FORMAL_TOP_LEVEL_DIRECTORIES = [
 ];
 
 export { PLATFORM_IDS } from './core/platforms.mjs';
-import { PLATFORM_IDS } from './core/platforms.mjs';
+import { PLATFORM_IDS, allPlatformIds, isRegisteredPlatform } from './core/platforms.mjs';
 export const SHARED_REPOSITORIES = ['tool', 'agent', 'software'];
 
 function asPosixPath(value) {
@@ -117,7 +117,7 @@ export function inspectPlatformDirectory(workspaceRoot, platformId, directoryRel
   const candidate = existsSync(selected) ? realpathSync(selected) : selected;
   const rel = relative(root, candidate);
   if (rel.startsWith(`..${sep}`) || rel === '..' || isAbsolute(rel)) throw new Error('PLATFORM_PATH_OUTSIDE_WORKSPACE');
-  if (!PLATFORM_IDS.includes(platformId) || resolve(root, platformId) !== candidate) throw new Error('PLATFORM_DIRECTORY_MISMATCH');
+  if (!isRegisteredPlatform(platformId, root) || resolve(root, platformId) !== candidate) throw new Error('PLATFORM_DIRECTORY_MISMATCH');
   const directoryExists = existsSync(candidate) && statSync(candidate).isDirectory();
   const canonical = join(candidate, 'bridge.json');
   const legacy = join(candidate, 'bridge', 'bridge.json');
@@ -173,7 +173,7 @@ export function scanWorkspace(workspaceRoot) {
   const shared = SHARED_REPOSITORIES.map((repository) => listReleasePointers(root, repository));
   for (const item of shared) errors.push(...item.errors);
   const localView = readLocalView(root);
-  const platforms = PLATFORM_IDS.map((id) => {
+  const platforms = allPlatformIds(root).map((id) => {
     const inspected = inspectPlatformDirectory(root, id);
     return { ...inspected, connection: inspectPlatformConnection({ workspaceRoot: root, platformId: id }), softwareConnector: softwareConnectorStatus(root, id), enabled: localView.enabled[id] !== false };
   });

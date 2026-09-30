@@ -6,7 +6,7 @@ import { sha256 } from './core/hash.mjs';
 import { inside, readJson } from './core/json.mjs';
 import { makeId, saveCheckpoint, writeAudit } from './transactions/kernel.mjs';
 
-import { isFormalPlatform } from './core/platforms.mjs';
+import { isRegisteredPlatform } from './core/platforms.mjs';
 const SOFTWARE_ID = /^[a-z0-9][a-z0-9._-]*$/;
 const SEMVER = /^\d+\.\d+\.\d+$/;
 const FLAGS = new Set(['--version', '-V', '-v']);
@@ -83,7 +83,7 @@ function probe(body, flag, version) {
 
 export function listSoftwareIntakes({ workspaceRoot, platformId }) {
   const root = resolve(workspaceRoot);
-  if (!isFormalPlatform(platformId)) throw new Error('UNKNOWN_PLATFORM_ID');
+  if (!isRegisteredPlatform(platformId, root)) throw new Error('UNKNOWN_PLATFORM_ID');
   const base = join(root, platformId, 'runtime', 'software');
   if (!existsSync(base)) return [];
   return readdirSync(base, { withFileTypes: true }).filter((entry) => entry.isDirectory() && SOFTWARE_ID.test(entry.name)).map((entry) => {
@@ -111,7 +111,7 @@ function releaseFiles({ softwareId, displayName, upstreamVersion, license, versi
 
 export function buildSoftwareRecipePlan({ workspaceRoot, platformId, softwareId, bodyName, displayName, upstreamVersion, license, versionFlag = '--version', releaseVersion = null, now = new Date().toISOString() }, { probeVersion = probe } = {}) {
   const root = resolve(workspaceRoot);
-  if (!isFormalPlatform(platformId) || !SOFTWARE_ID.test(softwareId) || typeof upstreamVersion !== 'string' || !upstreamVersion.trim() || upstreamVersion.length > 80 || /[\r\n]/.test(upstreamVersion) || !FLAGS.has(versionFlag) || typeof displayName !== 'string' || !displayName.trim() || typeof license !== 'string' || !license.trim()) throw new Error('INVALID_SOFTWARE_RECIPE_INPUT');
+  if (!isRegisteredPlatform(platformId, root) || !SOFTWARE_ID.test(softwareId) || typeof upstreamVersion !== 'string' || !upstreamVersion.trim() || upstreamVersion.length > 80 || /[\r\n]/.test(upstreamVersion) || !FLAGS.has(versionFlag) || typeof displayName !== 'string' || !displayName.trim() || typeof license !== 'string' || !license.trim()) throw new Error('INVALID_SOFTWARE_RECIPE_INPUT');
   const version = resolveRecipeVersion(root, softwareId, releaseVersion);
   const imported = importedBody(root, platformId, softwareId, bodyName);
   if (imported.manifest.intakeKind === 'installer') throw new Error('INSTALLER_NOT_INSTALLED');
@@ -178,7 +178,7 @@ function checkPublished(root, target, connector) {
 export function applySoftwareRecipe({ plan }, { probeVersion = probe, verifyPublished = checkPublished, actor = 'local-user', auditRoot = defaultAuditRoot(), now = new Date().toISOString(), onProgress = () => {}, failAfterCheckpoint = false } = {}) {
   if (plan?.kind !== 'software-recipe-publish') throw new Error('INVALID_SOFTWARE_RECIPE_PLAN');
   const { workspaceRoot: root, target, baseline, payload } = plan;
-  if (!isFormalPlatform(target.platformId) || !SOFTWARE_ID.test(target.softwareId) || !FLAGS.has(target.versionFlag) || !SEMVER.test(target.version) || target.path !== join(root, 'software', target.softwareId, 'versions', target.version)) throw new Error('INVALID_SOFTWARE_RECIPE_PLAN');
+  if (!isRegisteredPlatform(target.platformId, root) || !SOFTWARE_ID.test(target.softwareId) || !FLAGS.has(target.versionFlag) || !SEMVER.test(target.version) || target.path !== join(root, 'software', target.softwareId, 'versions', target.version)) throw new Error('INVALID_SOFTWARE_RECIPE_PLAN');
   const imported = importedBody(root, target.platformId, target.softwareId, target.bodyName);
   if (imported.body !== target.bodyPath || sha(readFileSync(imported.body)) !== baseline.bodySha256) throw new Error('SOFTWARE_BODY_CHANGED');
   const probeOutput = probeVersion(imported.body, target.versionFlag, target.upstreamVersion);

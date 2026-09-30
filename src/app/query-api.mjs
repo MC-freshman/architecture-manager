@@ -18,4 +18,5 @@ export { parseImplementationTables } from '../plans-center.mjs';
 export { diffDocument } from '../docs-ops.mjs';
 export { governanceOnboardingDraft, buildOnboardingCard } from '../onboarding.mjs';
 export { runOnboardingPipeline } from '../onboarding.mjs';
+export { readOnboardingConfig } from '../onboarding-config.mjs';
 

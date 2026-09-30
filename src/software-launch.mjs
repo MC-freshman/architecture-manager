@@ -6,13 +6,13 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { isFormalPlatform } from './core/platforms.mjs';
+import { isRegisteredPlatform } from './core/platforms.mjs';
 import { defaultAuditRoot } from './core/paths.mjs';
 import { runnerConfig } from './software-publish.mjs';
 import { makeId, output, requirePlan, writeAudit } from './transactions/kernel.mjs';
 
 export function buildSoftwareConnectorLaunchPlan({ workspaceRoot, platformId, softwareId, now = new Date().toISOString() }) {
-  if (!isFormalPlatform(platformId)) throw new Error('INVALID_PLATFORM');
+  if (!isRegisteredPlatform(platformId, workspaceRoot)) throw new Error('INVALID_PLATFORM');
   if (typeof softwareId !== 'string' || softwareId.trim() === '') throw new Error('INVALID_SOFTWARE_ID');
   const root = resolve(workspaceRoot);
   const connector = runnerConfig(root, platformId);

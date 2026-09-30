@@ -4,7 +4,7 @@ import { defaultAuditRoot } from './core/paths.mjs';
 import { sha256 } from './core/hash.mjs';
 import { atomicWrite, writeAudit } from './transactions/kernel.mjs';
 import { inside } from './core/json.mjs';
-import { isFormalPlatform } from './core/platforms.mjs';
+import { isRegisteredPlatform } from './core/platforms.mjs';
 
 function events(auditRoot) {
   const path = join(auditRoot, 'events.jsonl');
@@ -47,7 +47,7 @@ export function revertSoftwareTransaction({ plan, auditRoot = defaultAuditRoot()
   const auditPlan = { planId: plan.planId, workspaceRoot: root };
   if (entry.action === 'software-import') {
     const { target, backup, rows, platformId, softwareId } = checkpoint;
-    if (!isFormalPlatform(platformId) || !/^[a-z0-9][a-z0-9._-]*$/.test(softwareId) || resolve(target) !== join(root, platformId, 'runtime', 'software', softwareId) || !inside(join(root, 'inbox', 'backup', platformId, softwareId), backup)) throw new Error('SOFTWARE_RECOVERY_TARGET_INVALID');
+    if (!isRegisteredPlatform(platformId, root) || !/^[a-z0-9][a-z0-9._-]*$/.test(softwareId) || resolve(target) !== join(root, platformId, 'runtime', 'software', softwareId) || !inside(join(root, 'inbox', 'backup', platformId, softwareId), backup)) throw new Error('SOFTWARE_RECOVERY_TARGET_INVALID');
     if (!existsSync(target) || !existsSync(backup) || lstatSync(target).isSymbolicLink() || lstatSync(backup).isSymbolicLink()) throw new Error('SOFTWARE_RECOVERY_TARGET_CHANGED');
     const registryPath = join(root, 'software', 'registry.json');
     if (existsSync(registryPath) && JSON.parse(readFileSync(registryPath, 'utf8')).software?.some((item) => item.id === softwareId)) throw new Error('SOFTWARE_RECIPE_STILL_REGISTERED');

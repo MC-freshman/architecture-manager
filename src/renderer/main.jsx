@@ -459,7 +459,7 @@ function App() {
       return;
     }
     if (!PLAN_WRITE_KINDS.includes(planPreview.kind)) return;
-    const target = planPreview.target?.path || (planPreview.kind === 'platform-view' ? `本地管理视图/platform:${planPreview.target?.platformId}` : `${planPreview.target?.repository}/${planPreview.target?.resourceId}/current.json`);
+    const target = planPreview.target?.path || (planPreview.target?.platformId ? `平台：${planPreview.target.platformId}` : `${planPreview.target?.repository}/${planPreview.target?.resourceId}/current.json`);
     if (!await api.confirm(`确认执行此计划？\n\n目标：${target}\n\n执行前会再次核对文件状态，失败会阻止覆盖。`)) return;
     setBusy(true);
     setTransactionProgress(null);
@@ -499,7 +499,7 @@ function App() {
         {!workspace && <ClonePanel api={api} onCloned={(root) => scan(root)} setMessage={setMessage} friendlyError={friendlyError} />}
         <PlatformPanel inventory={inventory} showExcluded={showExcluded} setShowExcluded={setShowExcluded} addPlatformDirectory={addPlatformDirectory} previewPlatform={previewPlatform} checkPlatform={checkPlatform} busy={busy} />
         <IntegrationPanel api={api} workspace={workspace} resources={resources} integrationKind={integrationKind} setIntegrationKind={setIntegrationKind} integrationOptions={integrationOptions} integrationTargetId={integrationTargetId} setIntegrationTargetId={setIntegrationTargetId} integrationMode={integrationMode} setIntegrationMode={setIntegrationMode} integrationPaths={integrationPaths} integrationPath={integrationPath} setIntegrationPath={setIntegrationPath} integrationTarget={integrationTarget} setIntegrationTarget={setIntegrationTarget} integrationText={integrationText} setIntegrationText={setIntegrationText} integrationTargetVersion={integrationTargetVersion} setIntegrationTargetVersion={setIntegrationTargetVersion} platformSuggestion={platformSuggestion} reloadIntegrationTarget={reloadIntegrationTarget} previewIntegration={previewIntegration} friendlyError={friendlyError} setMessage={setMessage} />
-        <OnboardPanel api={api} workspace={workspace} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} setMessage={setMessage} friendlyError={friendlyError} />
+        <OnboardPanel api={api} workspace={workspace} inventory={inventory} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} setMessage={setMessage} friendlyError={friendlyError} />
       </>;
       case 'runs': return <RunsPanel api={api} workspace={workspace} />;
       case 'governance': return <GovernancePanel api={api} workspace={workspace} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} setMessage={setMessage} friendlyError={friendlyError} />;
