@@ -1,18 +1,13 @@
 import { execFile } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
+import { sha256 } from './core/hash.mjs';
+import { inside, readJson } from './core/json.mjs';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 import { isFormalPlatform } from './core/platforms.mjs';
 
-function sha256(value) { return createHash('sha256').update(value).digest('hex'); }
-function inside(parent, target) {
-  const rel = relative(parent, target);
-  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !/^[A-Za-z]:/i.test(rel));
-}
-function readJson(path) { return JSON.parse(readFileSync(path, 'utf8')); }
 function fail(stage, issues, extra = {}) { return { schema: 'architecture-manager-platform-check/v1', stage, issues, ...extra, writePerformed: false }; }
 function reportGaps(report) {
   return (report?.verdicts || []).filter((row) => row.verdict !== 'pass').map((row) => ({ id: row.id, verdict: row.verdict, reason: row.reason || null, remediation: row.remediation?.path || null, costMinutes: Number.isInteger(row.remediation?.costMinutes) ? row.remediation.costMinutes : null }));

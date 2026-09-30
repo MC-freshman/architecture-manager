@@ -3,6 +3,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { defaultAuditRoot } from './core/paths.mjs';
 import { sha256 } from './core/hash.mjs';
 import { atomicWrite, writeAudit } from './transactions/kernel.mjs';
+import { inside } from './core/json.mjs';
 import { isFormalPlatform } from './core/platforms.mjs';
 
 function events(auditRoot) {
@@ -11,10 +12,6 @@ function events(auditRoot) {
   return readFileSync(path, 'utf8').split(/\r?\n/).filter(Boolean).flatMap((line) => { try { return [JSON.parse(line)]; } catch { return []; } });
 }
 
-function inside(parent, target) {
-  const rel = relative(parent, target);
-  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !/^[A-Za-z]:/i.test(rel));
-}
 
 export function listSoftwareRecoveries({ workspaceRoot, auditRoot = defaultAuditRoot() }) {
   const root = resolve(workspaceRoot);

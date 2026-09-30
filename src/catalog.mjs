@@ -1,12 +1,9 @@
-import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
-const ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+import { sha256 } from './core/hash.mjs';
 
-function sha256(value) {
-  return createHash('sha256').update(value, 'utf8').digest('hex');
-}
+const ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 function readJson(path) {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return null; }

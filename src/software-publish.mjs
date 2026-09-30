@@ -1,18 +1,17 @@
 import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { defaultAuditRoot } from './core/paths.mjs';
+import { sha256 } from './core/hash.mjs';
+import { inside, readJson } from './core/json.mjs';
 import { makeId, saveCheckpoint, writeAudit } from './transactions/kernel.mjs';
 
 import { isFormalPlatform } from './core/platforms.mjs';
 const SOFTWARE_ID = /^[a-z0-9][a-z0-9._-]*$/;
 const SEMVER = /^\d+\.\d+\.\d+$/;
 const FLAGS = new Set(['--version', '-V', '-v']);
-function sha(value) { return createHash('sha256').update(value).digest('hex'); }
+const sha = sha256;
 function json(value) { return `${JSON.stringify(value, null, 2)}\n`; }
-function readJson(path) { return JSON.parse(readFileSync(path, 'utf8')); }
-function inside(parent, target) { const rel = relative(parent, target); return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !/^[A-Za-z]:/i.test(rel)); }
 export function resolveRecipeVersion(root, softwareId, releaseVersion) {
   if (releaseVersion != null) {
     if (typeof releaseVersion !== 'string' || !SEMVER.test(releaseVersion)) throw new Error('RELEASE_SEMVER_INVALID');

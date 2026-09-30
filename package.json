@@ -16,14 +16,14 @@
     "package:win": "npm run build:ui && electron-builder --win nsis portable --publish never"
   },
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.1",
-    "electron": "^30.5.1",
+    "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^44.5.0",
     "electron-builder": "^26.15.3",
-    "vite": "^5.4.8"
+    "vite": "^8.3.1"
   },
   "build": {
     "appId": "local.codex.architecturemanager",
@@ -51,5 +51,8 @@
     "portable": {
       "artifactName": "Architecture-Manager-${version}-portable-${arch}.${ext}"
     }
+  },
+  "allowScripts": {
+    "electron@44.5.0": true
   }
 }

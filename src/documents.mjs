@@ -1,14 +1,10 @@
-import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
+import { sha256 } from './core/hash.mjs';
 import { join, normalize, relative, resolve, sep } from 'node:path';
 
 export const TOP_LEVEL_REQUIREMENTS = new Set(['versions/架构基本原则.md', 'AGENTS.md', 'AI_ARCHITECTURE_SYSTEM_PROMPT.md', 'agentic-workflow-master-manual.md', 'HANDOFF.md', 'invocation-adapters-spec.md']);
 export const EXTRA_DOCUMENTS = [...TOP_LEVEL_REQUIREMENTS].filter((path) => !path.includes('/')).concat(['architecture-manager/README.md']);
 export const UPDATE_LOG_PATH = 'versions/更新日志.md';
-
-function sha256(text) {
-  return createHash('sha256').update(text, 'utf8').digest('hex');
-}
 
 function normalizeRelativePath(relativePath) {
   if (typeof relativePath !== 'string' || relativePath.trim() === '') throw new Error('INVALID_DOCUMENT_PATH');

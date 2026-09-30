@@ -11,7 +11,7 @@ import { buildPlatformViewPlan, buildResourcePointerPlan } from '../src/plans.mj
 import { buildRegistryPlan, readCatalogEntry } from '../src/catalog.mjs';
 import { buildDocumentPlan, readDocument } from '../src/documents.mjs';
 import { buildSoftwareLaunchPlan, listSoftware } from '../src/software.mjs';
-import { backupAndRestoreFixture, buildGitPlan, scanSensitiveFiles } from '../src/git.mjs';
+import { buildGitPlan, scanSensitiveFiles } from '../src/git.mjs';
 import { applyPlan, verifyPlanTarget } from '../src/transactions.mjs';
 import { buildIntegrationPlan, listIntegrationTargets, readIntegrationTarget, suggestPlatformBridge } from '../src/integration.mjs';
 import { inspectPlatformConnection, runPlatformCheck } from '../src/platform-check.mjs';
@@ -43,7 +43,7 @@ test('scans a workspace without writing', () => {
   const root = fixture();
   try {
     const result = scanWorkspace(root);
-    assert.equal(result.schema, 'architecture-manager-inventory/v1');
+    assert.equal(result.schema, 'architecture-manager-inventory/v2');
     assert.equal(result.writePerformed, false);
     assert.equal(result.sharedRepositories[0].pointers[0].version, '1.0.0');
     assert.equal(result.platforms.find((item) => item.id === 'codex').bridge, 'codex/bridge/bridge.json');
@@ -383,16 +383,7 @@ test('creates guarded Git plans without applying them', () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-test('rehearses backup and restore on a temporary fixture', () => {
-  const root = fixture();
-  writeFileSync(join(root, 'payload.txt'), 'restore-me');
-  const scan = scanSensitiveFiles(root);
-  assert.equal(scan.clean, true);
-  const result = backupAndRestoreFixture(root);
-  assert.equal(result.restored, 'restore-me');
-  assert.equal(result.writePerformed, true);
-  rmSync(root, { recursive: true, force: true });
-});
+
 
 test('applies and verifies a document plan with checkpoint and idempotency', () => {
   const root = fixture();

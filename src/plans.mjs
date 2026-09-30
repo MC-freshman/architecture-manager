@@ -1,3 +1,6 @@
+import { existsSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+
 const REPOSITORIES = new Set(['tool', 'agent', 'software']);
 const RESOURCE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
@@ -66,6 +69,3 @@ export function buildResourcePointerPlan({ workspaceRoot, repository, resourceId
   plan.verification.push('target version directory and SHA256SUMS pass after apply');
   return plan;
 }
-import { existsSync, statSync } from 'node:fs';
-import { join } from 'node:path';
-

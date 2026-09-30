@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
+import { sha256 } from './core/hash.mjs';
 import { join, relative, resolve, sep } from 'node:path';
 
 const RESOURCE_KINDS = new Set(['tool', 'agent', 'software']);
@@ -8,9 +8,6 @@ import { buildResourcePointerPlan } from './plans.mjs';
 const ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const SECRET_KEYS = /(password|passwd|secret|token|api[_-]?key|private[_-]?key|access[_-]?key)/i;
 
-function sha256(value) {
-  return createHash('sha256').update(value, 'utf8').digest('hex');
-}
 
 function rootPath(workspaceRoot) {
   const root = resolve(workspaceRoot);

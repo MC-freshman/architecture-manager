@@ -207,7 +207,7 @@ export function scanWorkspace(workspaceRoot) {
   if (toolRegistry.ok && Array.isArray(toolRegistry.value?.skills)) skills.push(...toolRegistry.value.skills);
 
   return {
-    schema: 'architecture-manager-inventory/v1',
+    schema: 'architecture-manager-inventory/v2',
     scannedAt: new Date().toISOString(),
     workspaceRoot: root,
     formalTopLevelDirectories: FORMAL_TOP_LEVEL_DIRECTORIES,

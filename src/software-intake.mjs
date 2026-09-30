@@ -3,15 +3,12 @@ import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, rea
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { defaultAuditRoot } from './core/paths.mjs';
 import { makeId, output, saveCheckpoint, writeAudit } from './transactions/kernel.mjs';
+import { inside } from './core/json.mjs';
 
 import { isFormalPlatform } from './core/platforms.mjs';
 const SOFTWARE_ID = /^[a-z0-9][a-z0-9._-]*$/;
 const KINDS = new Set(['portable-file', 'unpacked-directory', 'installer']);
 
-function inside(parent, target) {
-  const rel = relative(parent, target);
-  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !/^[A-Za-z]:/i.test(rel));
-}
 function digest(path) {
   const hash = createHash('sha256');
   const file = openSync(path, 'r');

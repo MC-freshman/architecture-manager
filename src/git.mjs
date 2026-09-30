@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, relative, resolve, sep } from 'node:path';
 
@@ -143,18 +143,3 @@ export function scanSensitivePaths(root, paths) {
   }
   return { clean: findings.length === 0, findings };
 }
-
-export function backupAndRestoreFixture(sourceRoot) {
-  const backupRoot = `${sourceRoot}-backup-test`;
-  const restoredRoot = `${sourceRoot}-restore-test`;
-  rmSync(backupRoot, { recursive: true, force: true });
-  rmSync(restoredRoot, { recursive: true, force: true });
-  cpSync(sourceRoot, backupRoot, { recursive: true, force: true });
-  rmSync(sourceRoot, { recursive: true, force: true });
-  cpSync(backupRoot, restoredRoot, { recursive: true, force: true });
-  const restored = readFileSync(join(restoredRoot, 'payload.txt'), 'utf8');
-  rmSync(backupRoot, { recursive: true, force: true });
-  rmSync(restoredRoot, { recursive: true, force: true });
-  return { restored, writePerformed: true };
-}
-
