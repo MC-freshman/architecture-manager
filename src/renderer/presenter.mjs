@@ -15,7 +15,8 @@ export const PLAN_WRITE_KINDS = [
   'git-push',
   'git-rollback',
   'git-backup',
-  'release-publish'
+  'release-publish',
+  'software-launch'
 ];
 
 export function friendlyError(error) {
@@ -64,7 +65,12 @@ export function friendlyError(error) {
     RESOURCE_NOT_FOUND: '找不到该资源目录或 current.json。',
     RELEASE_UPGRADE_SOURCE_MISSING: '升级来源版本目录不存在。',
     RELEASE_MANIFEST_VERSION_MISMATCH: 'manifest 版本与目标版本不一致，请重新生成计划。',
-    CATALOG_SUPERSEDED_BY_REQUIRED: '标记 deprecated 必须提供 supersededBy。'
+    CATALOG_SUPERSEDED_BY_REQUIRED: '标记 deprecated 必须提供 supersededBy。',
+    SOFTWARE_NOT_DECLARED: '所选平台的连接器没有声明这个软件本体，先完成安置与绑定。',
+    SOFTWARE_CONNECTOR_FAILED: '连接器进程执行失败，见审计事件；管理台不重试、不代答。',
+    SOFTWARE_CONNECTOR_INVALID: '连接器输出不是合法 JSON，启动结果未知。',
+    SOFTWARE_CONNECTOR_ENTRY_MISSING: '连接器入口文件不存在。',
+    RELEASE_SEMVER_INVALID: '版本号必须是严格的 x.y.z。'
   };
   return hints[key] ? `${hints[key]}（${key}）${details.length ? `\n${details.join(':').trim()}` : ''}` : code;
 }

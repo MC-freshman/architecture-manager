@@ -122,7 +122,7 @@ function App() {
   const skills = useMemo(() => (inventory?.skills || []).filter((item) => !catalogFilter || item.id.toLowerCase().includes(catalogFilter.toLowerCase())), [inventory, catalogFilter]);
   const integrationOptions = useMemo(() => {
     if (integrationKind === 'platform') return (inventory?.platforms || []).map((item) => ({ id: item.id, label: item.id }));
-    if (integrationKind === 'software') return (inventory?.software || []).filter((item) => !['burp-suite', 'veracrypt'].includes(item.id)).map((item) => ({ id: item.id, label: `${item.id} · ${item.version || '无 current'}` }));
+    if (integrationKind === 'software') return (inventory?.software || []).map((item) => ({ id: item.id, label: `${item.id} · ${item.version || '无 current'}` }));
     return [{ id: '__registry__', label: `${integrationKind}/registry.json（共享仓）` }, ...resources.filter((item) => item.repository === integrationKind).map((item) => ({ id: item.resourceId, label: `${item.resourceId} · ${item.version || '无 current'}` }))];
   }, [integrationKind, inventory, resources]);
 
@@ -377,6 +377,19 @@ function App() {
     }
   };
 
+  const previewSoftwareConnectorLaunch = async (item) => {
+    const platformId = window.prompt('通过哪个平台的连接器启动？（如 zcode / qoder）', 'zcode') || '';
+    if (!workspace || !platformId) return;
+    try {
+      const plan = await api.previewSoftwareConnectorLaunchPlan({ workspaceRoot, platformId, softwareId: item.id });
+      setPlanPreview(plan);
+      setPlanPayload(null);
+      setMessage(`已生成 ${item.id} 经 ${platformId} 连接器的启动计划；连接器的答复会原样转达（含 INTERACTIVE_REQUIRED / 漂移），不会美化。`);
+    } catch (error) {
+      setMessage(`启动计划被拒绝：${friendlyError(error)}`);
+    }
+  };
+
   const previewSoftwareRevert = async (item) => {
     try {
       const plan = await api.previewSoftwareRevertPlan({ workspaceRoot: workspace, checkpointPath: item.checkpointPath });
@@ -478,7 +491,7 @@ function App() {
           <HelpPanel />
           <ResourcePanel inventory={inventory} resources={resources} resourceFilter={resourceFilter} setResourceFilter={setResourceFilter} targetVersions={targetVersions} setTargetVersions={setTargetVersions} previewResource={previewResource} />
           <DocumentPanel documentSummaries={documentSummaries} visibleDocuments={visibleDocuments} documentFilter={documentFilter} setDocumentFilter={setDocumentFilter} selectedDocument={selectedDocument} documentDraft={documentDraft} setDocumentDraft={setDocumentDraft} sensitiveConfirmed={sensitiveConfirmed} setSensitiveConfirmed={setSensitiveConfirmed} openDocument={openDocument} previewDocument={previewDocument} />
-          <SoftwarePanel api={api} workspace={workspace} inventory={inventory} software={software} softwareResults={softwareResults} checkSoftware={checkSoftware} previewSoftwareLocation={previewSoftwareLocation} previewSoftware={previewSoftware} previewSoftwareImport={previewSoftwareImport} previewSoftwareRecipe={previewSoftwareRecipe} previewSoftwareRevert={previewSoftwareRevert} setMessage={setMessage} />
+          <SoftwarePanel api={api} workspace={workspace} inventory={inventory} software={software} softwareResults={softwareResults} checkSoftware={checkSoftware} previewSoftwareLocation={previewSoftwareLocation} previewSoftware={previewSoftware} previewSoftwareImport={previewSoftwareImport} previewSoftwareRecipe={previewSoftwareRecipe} previewSoftwareRevert={previewSoftwareRevert} previewSoftwareConnectorLaunch={previewSoftwareConnectorLaunch} setMessage={setMessage} />
           <GitPanel gitDetails={gitDetails} workspace={workspace} refreshGit={refreshGit} previewGit={previewGit} sensitiveScan={sensitiveScan} />
           <RunsPanel api={api} workspace={workspace} />
           <GovernancePanel api={api} workspace={workspace} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} setMessage={setMessage} friendlyError={friendlyError} />

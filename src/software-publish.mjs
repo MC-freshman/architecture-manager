@@ -7,12 +7,26 @@ import { makeId, saveCheckpoint, writeAudit } from './transactions/kernel.mjs';
 
 import { isFormalPlatform } from './core/platforms.mjs';
 const SOFTWARE_ID = /^[a-z0-9][a-z0-9._-]*$/;
+const SEMVER = /^\d+\.\d+\.\d+$/;
 const FLAGS = new Set(['--version', '-V', '-v']);
 function sha(value) { return createHash('sha256').update(value).digest('hex'); }
 function json(value) { return `${JSON.stringify(value, null, 2)}\n`; }
 function readJson(path) { return JSON.parse(readFileSync(path, 'utf8')); }
 function inside(parent, target) { const rel = relative(parent, target); return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !/^[A-Za-z]:/i.test(rel)); }
-function runnerConfig(root, platformId) {
+export function resolveRecipeVersion(root, softwareId, releaseVersion) {
+  if (releaseVersion != null) {
+    if (typeof releaseVersion !== 'string' || !SEMVER.test(releaseVersion)) throw new Error('RELEASE_SEMVER_INVALID');
+    return releaseVersion;
+  }
+  const versionsDir = join(root, 'software', softwareId, 'versions');
+  if (!existsSync(versionsDir)) return '1.0.0';
+  const versions = readdirSync(versionsDir, { withFileTypes: true }).filter((entry) => entry.isDirectory() && SEMVER.test(entry.name)).map((entry) => entry.name).sort();
+  if (versions.length === 0) return '1.0.0';
+  const [major, minor, patch] = versions.at(-1).split('.').map(Number);
+  return `${major}.${minor}.${patch + 1}`;
+}
+
+export function runnerConfig(root, platformId) {
   const candidates = [join(root, platformId, 'bridge', 'runner-config.json'), join(root, platformId, 'bridge', `${platformId}-config.json`)];
   const path = candidates.find((candidate) => existsSync(candidate));
   if (!path) throw new Error('SOFTWARE_CONNECTOR_NOT_CONFIGURED');
@@ -96,26 +110,30 @@ function releaseFiles({ softwareId, displayName, upstreamVersion, license, versi
   return files;
 }
 
-export function buildSoftwareRecipePlan({ workspaceRoot, platformId, softwareId, bodyName, displayName, upstreamVersion, license, versionFlag = '--version', now = new Date().toISOString() }, { probeVersion = probe } = {}) {
+export function buildSoftwareRecipePlan({ workspaceRoot, platformId, softwareId, bodyName, displayName, upstreamVersion, license, versionFlag = '--version', releaseVersion = null, now = new Date().toISOString() }, { probeVersion = probe } = {}) {
   const root = resolve(workspaceRoot);
   if (!isFormalPlatform(platformId) || !SOFTWARE_ID.test(softwareId) || typeof upstreamVersion !== 'string' || !upstreamVersion.trim() || upstreamVersion.length > 80 || /[\r\n]/.test(upstreamVersion) || !FLAGS.has(versionFlag) || typeof displayName !== 'string' || !displayName.trim() || typeof license !== 'string' || !license.trim()) throw new Error('INVALID_SOFTWARE_RECIPE_INPUT');
-  const version = '1.0.0';
+  const version = resolveRecipeVersion(root, softwareId, releaseVersion);
   const imported = importedBody(root, platformId, softwareId, bodyName);
   if (imported.manifest.intakeKind === 'installer') throw new Error('INSTALLER_NOT_INSTALLED');
   const connector = runnerConfig(root, platformId);
-  if (connector.value.bodies[softwareId]) throw new Error('SOFTWARE_BODY_ALREADY_BOUND');
+  const upgrade = existsSync(join(root, 'software', softwareId));
+  if (!upgrade && connector.value.bodies[softwareId]) throw new Error('SOFTWARE_BODY_ALREADY_BOUND');
   const release = join(root, 'software', softwareId, 'versions', version);
-  if (existsSync(join(root, 'software', softwareId)) || existsSync(release)) throw new Error('SOFTWARE_ALREADY_REGISTERED');
+  if (existsSync(release)) throw new Error('SOFTWARE_ALREADY_REGISTERED');
   const registryPath = join(root, 'software', 'registry.json');
   const registryText = readFileSync(registryPath, 'utf8');
   const registry = JSON.parse(registryText);
-  if (registry.software?.some((item) => item.id === softwareId)) throw new Error('SOFTWARE_ALREADY_REGISTERED');
+  if (!upgrade && registry.software?.some((item) => item.id === softwareId)) throw new Error('SOFTWARE_ALREADY_REGISTERED');
   const probeOutput = probeVersion(imported.body, versionFlag, upstreamVersion);
   const files = releaseFiles({ softwareId, displayName: displayName.trim(), upstreamVersion, license: license.trim(), version, bodyName, bodyRows: imported.rows, flag: versionFlag, probeOutput, now });
-  const nextRegistry = json({ ...registry, version: registry.version + 1, software: [...registry.software, { id: softwareId, current: `${softwareId}/current.json`, enabled: true, kind: 'cli-wrapper', invocable: false, transports: [] }] });
-  const pointer = json({ schema: 'ai-software-pointer/v1', id: softwareId, version, available: [version], hashManifest: 'SHA256SUMS' });
-  const nextConnector = json({ ...connector.value, bodies: { ...connector.value.bodies, [softwareId]: imported.body } });
-  return { schema: 'architecture-manager-plan/v1', planId: `software-recipe-${softwareId}-${now.replace(/[^0-9]/g, '').slice(0, 17)}`, kind: 'software-recipe-publish', workspaceRoot: root, generatedAt: now, applyMode: 'confirmation-required', writePerformed: false, target: { platformId, softwareId, bodyName, displayName: displayName.trim(), upstreamVersion, license: license.trim(), versionFlag, version, path: release, connectorConfigPath: connector.path, bodyPath: imported.body }, steps: [{ operation: 'publish-immutable-recipe', target: release, files: Object.keys(files).length }, { operation: 'create-current-and-register', target: registryPath }, { operation: 'bind-platform-connector', target: connector.path }], verification: ['re-probe body and compare hash before publish', 'verify every release file against SHA256SUMS', 'verify pointer, registry and connector body binding'], baseline: { bodySha256: sha(readFileSync(imported.body)), probeSha256: sha(probeOutput), registrySha256: sha(registryText), connectorSha256: sha(connector.text) }, payload: { files, pointer, registry: nextRegistry, connector: nextConnector } };
+  const nextRegistry = upgrade ? null : json({ ...registry, version: registry.version + 1, software: [...registry.software, { id: softwareId, current: `${softwareId}/current.json`, enabled: true, kind: 'cli-wrapper', invocable: false, transports: [] }] });
+  const pointerPath = join(root, 'software', softwareId, 'current.json');
+  const previousPointer = upgrade && existsSync(pointerPath) ? readJson(pointerPath) : null;
+  const available = previousPointer?.available ? [...new Set([...previousPointer.available, version])] : [version];
+  const pointer = json({ schema: 'ai-software-pointer/v1', id: softwareId, version, available, hashManifest: 'SHA256SUMS' });
+  const nextConnector = upgrade ? null : json({ ...connector.value, bodies: { ...connector.value.bodies, [softwareId]: imported.body } });
+  return { schema: 'architecture-manager-plan/v1', planId: `software-recipe-${softwareId}-${now.replace(/[^0-9]/g, '').slice(0, 17)}`, kind: 'software-recipe-publish', workspaceRoot: root, generatedAt: now, applyMode: 'confirmation-required', writePerformed: false, target: { platformId, softwareId, bodyName, displayName: displayName.trim(), upstreamVersion, license: license.trim(), versionFlag, version, path: release, connectorConfigPath: connector.path, bodyPath: imported.body, upgrade }, steps: [{ operation: 'publish-immutable-recipe', target: release, files: Object.keys(files).length }, upgrade ? { operation: 'update-current-pointer', target: pointerPath } : { operation: 'create-current-and-register', target: registryPath }, ...(upgrade ? [] : [{ operation: 'bind-platform-connector', target: connector.path }])], verification: ['re-probe body and compare hash before publish', 'verify every release file against SHA256SUMS', 'verify pointer, registry and connector body binding'], baseline: { bodySha256: sha(readFileSync(imported.body)), probeSha256: sha(probeOutput), registrySha256: sha(registryText), connectorSha256: sha(connector.text), pointerSha256: previousPointer ? sha(readFileSync(pointerPath, 'utf8')) : null }, payload: { files, pointer, registry: nextRegistry, connector: nextConnector } };
 }
 
 function atomicText(path, content, suffix) {
@@ -161,7 +179,7 @@ function checkPublished(root, target, connector) {
 export function applySoftwareRecipe({ plan }, { probeVersion = probe, verifyPublished = checkPublished, actor = 'local-user', auditRoot = defaultAuditRoot(), now = new Date().toISOString(), onProgress = () => {}, failAfterCheckpoint = false } = {}) {
   if (plan?.kind !== 'software-recipe-publish') throw new Error('INVALID_SOFTWARE_RECIPE_PLAN');
   const { workspaceRoot: root, target, baseline, payload } = plan;
-  if (!isFormalPlatform(target.platformId) || !SOFTWARE_ID.test(target.softwareId) || !FLAGS.has(target.versionFlag) || target.version !== '1.0.0' || target.path !== join(root, 'software', target.softwareId, 'versions', target.version)) throw new Error('INVALID_SOFTWARE_RECIPE_PLAN');
+  if (!isFormalPlatform(target.platformId) || !SOFTWARE_ID.test(target.softwareId) || !FLAGS.has(target.versionFlag) || !SEMVER.test(target.version) || target.path !== join(root, 'software', target.softwareId, 'versions', target.version)) throw new Error('INVALID_SOFTWARE_RECIPE_PLAN');
   const imported = importedBody(root, target.platformId, target.softwareId, target.bodyName);
   if (imported.body !== target.bodyPath || sha(readFileSync(imported.body)) !== baseline.bodySha256) throw new Error('SOFTWARE_BODY_CHANGED');
   const probeOutput = probeVersion(imported.body, target.versionFlag, target.upstreamVersion);
@@ -173,15 +191,20 @@ export function applySoftwareRecipe({ plan }, { probeVersion = probe, verifyPubl
   const oldConnector = connector.text;
   if (sha(oldRegistry) !== baseline.registrySha256 || sha(oldConnector) !== baseline.connectorSha256) throw new Error('EXTERNAL_CHANGE_DETECTED');
   const registry = JSON.parse(oldRegistry);
-  const expectedRegistry = json({ ...registry, version: registry.version + 1, software: [...registry.software, { id: target.softwareId, current: `${target.softwareId}/current.json`, enabled: true, kind: 'cli-wrapper', invocable: false, transports: [] }] });
-  const expectedPointer = json({ schema: 'ai-software-pointer/v1', id: target.softwareId, version: target.version, available: [target.version], hashManifest: 'SHA256SUMS' });
-  const expectedConnector = json({ ...connector.value, bodies: { ...connector.value.bodies, [target.softwareId]: imported.body } });
-  if (payload.registry !== expectedRegistry || payload.pointer !== expectedPointer || payload.connector !== expectedConnector) throw new Error('PLAN_PAYLOAD_MISMATCH');
+  const expectedRegistry = payload.registry === null ? null : json({ ...registry, version: registry.version + 1, software: [...registry.software, { id: target.softwareId, current: `${target.softwareId}/current.json`, enabled: true, kind: 'cli-wrapper', invocable: false, transports: [] }] });
+  const pointerPath = join(root, 'software', target.softwareId, 'current.json');
+  const oldPointerText = existsSync(pointerPath) ? readFileSync(pointerPath, 'utf8') : null;
+  if ((baseline.pointerSha256 ?? null) !== (oldPointerText ? sha(oldPointerText) : null)) throw new Error('EXTERNAL_CHANGE_DETECTED');
+  const previousPointer = oldPointerText ? JSON.parse(oldPointerText) : null;
+  const available = previousPointer?.available ? [...new Set([...previousPointer.available, target.version])] : [target.version];
+  const expectedPointer = json({ schema: 'ai-software-pointer/v1', id: target.softwareId, version: target.version, available, hashManifest: 'SHA256SUMS' });
+  const expectedConnector = payload.connector === null ? null : json({ ...connector.value, bodies: { ...connector.value.bodies, [target.softwareId]: imported.body } });
+  if ((payload.registry ?? null) !== expectedRegistry || payload.pointer !== expectedPointer || (payload.connector ?? null) !== expectedConnector) throw new Error('PLAN_PAYLOAD_MISMATCH');
   if (existsSync(target.path)) throw new Error('SOFTWARE_ALREADY_REGISTERED');
   const expected = releaseFiles({ softwareId: target.softwareId, displayName: target.displayName, upstreamVersion: target.upstreamVersion, license: target.license, version: target.version, bodyName: target.bodyName, bodyRows: imported.rows, flag: target.versionFlag, probeOutput, now: plan.generatedAt });
   if (JSON.stringify(expected) !== JSON.stringify(payload.files)) throw new Error('PLAN_PAYLOAD_MISMATCH');
   const transactionId = makeId(plan, now);
-  const checkpoint = saveCheckpoint(auditRoot, transactionId, json({ schema: 'architecture-manager-software-publish-checkpoint/v1', softwareId: target.softwareId, platformId: target.platformId, bodyPath: target.bodyPath, registryPath, oldRegistry, connectorPath: target.connectorConfigPath, oldConnector, pointerPath: join(root, 'software', target.softwareId, 'current.json'), releasePath: target.path, releaseSumsSha256: sha(payload.files.SHA256SUMS), createdNewRelease: true }));
+  const checkpoint = saveCheckpoint(auditRoot, transactionId, json({ schema: 'architecture-manager-software-publish-checkpoint/v1', softwareId: target.softwareId, platformId: target.platformId, bodyPath: target.bodyPath, registryPath, oldRegistry, connectorPath: target.connectorConfigPath, oldConnector, pointerPath: join(root, 'software', target.softwareId, 'current.json'), oldPointerText, releasePath: target.path, releaseSumsSha256: sha(payload.files.SHA256SUMS), createdNewRelease: true }));
   if (failAfterCheckpoint) {
     const audit = writeAudit({ auditRoot, transactionId, plan, actor, action: 'software-recipe-publish', status: 'interrupted-before-write', target: target.path, checkpointSha256: checkpoint.sha256, checkpointPath: checkpoint.path, error: 'SIMULATED_INTERRUPT', now });
     throw Object.assign(new Error('SIMULATED_INTERRUPT'), { audit, checkpointPath: checkpoint.path });
@@ -190,10 +213,9 @@ export function applySoftwareRecipe({ plan }, { probeVersion = probe, verifyPubl
   mkdirSync(platformRuntime, { recursive: true });
   const stage = mkdtempSync(join(platformRuntime, '.software-release-stage-'));
   const releaseParent = dirname(target.path);
-  const pointerPath = join(root, 'software', target.softwareId, 'current.json');
   let registryWritten = false;
   let connectorWritten = false;
-  let pointerCreated = false;
+  let pointerWritten = false;
   let releaseCreated = false;
   try {
     for (const [index, [name, content]] of Object.entries(payload.files).entries()) {
@@ -207,11 +229,15 @@ export function applySoftwareRecipe({ plan }, { probeVersion = probe, verifyPubl
     renameSync(stage, target.path);
     releaseCreated = true;
     atomicText(pointerPath, payload.pointer, plan.planId);
-    pointerCreated = true;
-    atomicText(registryPath, payload.registry, plan.planId);
-    registryWritten = true;
-    atomicText(target.connectorConfigPath, payload.connector, plan.planId);
-    connectorWritten = true;
+    pointerWritten = true;
+    if (payload.registry !== null) {
+      atomicText(registryPath, payload.registry, plan.planId);
+      registryWritten = true;
+    }
+    if (payload.connector !== null) {
+      atomicText(target.connectorConfigPath, payload.connector, plan.planId);
+      connectorWritten = true;
+    }
     const verification = verifySoftwareRecipe({ plan });
     if (!verification.ok) throw new Error('SOFTWARE_PUBLISH_VERIFY_FAILED');
     let check;
@@ -223,7 +249,10 @@ export function applySoftwareRecipe({ plan }, { probeVersion = probe, verifyPubl
   } catch (error) {
     if (connectorWritten) atomicText(target.connectorConfigPath, oldConnector, `${plan.planId}-restore`);
     if (registryWritten) atomicText(registryPath, oldRegistry, `${plan.planId}-restore`);
-    if (pointerCreated && existsSync(pointerPath)) rmSync(pointerPath, { force: true });
+    if (pointerWritten) {
+      if (oldPointerText) atomicText(pointerPath, oldPointerText, `${plan.planId}-restore`);
+      else if (existsSync(pointerPath)) rmSync(pointerPath, { force: true });
+    }
     if (releaseCreated && existsSync(target.path)) {
       rmSync(target.path, { recursive: true, force: true });
       for (const emptyParent of [releaseParent, dirname(releaseParent)]) {

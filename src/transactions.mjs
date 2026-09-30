@@ -3,6 +3,7 @@ import { buildRegistryPlan } from './catalog.mjs';
 import { buildDefectBookEditPlan } from './defects.mjs';
 import { applyGitTransaction, verifyGitTransaction } from './git-executor.mjs';
 import { applyRelease, verifyRelease } from './releases.mjs';
+import { applySoftwareLaunch } from './software-launch.mjs';
 import { inspectPlatformDirectory } from './inventory.mjs';
 import { buildIntegrationPlan } from './integration.mjs';
 import { assertPublishedVersion } from './plans.mjs';
@@ -20,6 +21,7 @@ export function applyPlan({ plan, afterText = null, actor = 'local-user', auditR
   if (plan.kind === 'defect-book-edit') return applyDefectBook(plan, afterText || plan.payload?.afterText, { actor, auditRoot, now, failAfterCheckpoint });
   if (plan.kind?.startsWith('git-')) return applyGitTransaction({ plan, actor, auditRoot, now });
   if (plan.kind === 'release-publish') return applyRelease(plan, { actor, auditRoot, now, failAfterCheckpoint });
+  if (plan.kind === 'software-launch') return applySoftwareLaunch({ plan }, { actor, auditRoot, now });
   if (plan.kind === 'resource-pointer') return applyPointer(plan, { actor, auditRoot, now, failAfterCheckpoint });
   if (plan.kind === 'platform-view') return applyPlatformView(plan, { actor, auditRoot, now, failAfterCheckpoint });
   if (plan.kind === 'registry-edit') return applyRegistry(plan, afterText || plan.payload?.afterText, { actor, auditRoot, now, failAfterCheckpoint });
@@ -258,6 +260,7 @@ export function verifyPlanTarget({ plan }) {
   requirePlan(plan);
   if (plan.kind?.startsWith('git-')) return verifyGitTransaction({ plan });
   if (plan.kind === 'release-publish') return verifyRelease({ plan });
+  if (plan.kind === 'software-launch') return { schema: 'architecture-manager-verification/v1', ok: true, target: `${plan.target.platformId}/${plan.target.softwareId}`, note: 'launch outcomes live in the connector reply recorded by the audit event', writePerformed: false };
   if (plan.kind === 'software-import') return verifySoftwareImport({ plan });
   if (plan.kind === 'software-recipe-publish') return verifySoftwareRecipe({ plan });
   if (plan.kind === 'software-revert') return verifySoftwareRevert({ plan });

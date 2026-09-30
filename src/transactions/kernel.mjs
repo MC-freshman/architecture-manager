@@ -12,7 +12,7 @@ function auditPath(auditRoot) {
   return join(auditRoot, 'events.jsonl');
 }
 
-export function writeAudit({ auditRoot, transactionId, plan, actor, action, status, target, oldSha256 = null, newSha256 = null, checkpointSha256 = null, checkpointPath = null, writePerformed = false, error = null, now }) {
+export function writeAudit({ auditRoot, transactionId, plan, actor, action, status, target, oldSha256 = null, newSha256 = null, checkpointSha256 = null, checkpointPath = null, connectorStatus = null, writePerformed = false, error = null, now }) {
   const event = {
     schema: 'architecture-manager-audit/v1',
     transactionId,
@@ -26,6 +26,7 @@ export function writeAudit({ auditRoot, transactionId, plan, actor, action, stat
     newSha256,
     checkpointSha256,
     checkpointPath,
+    connectorStatus,
     writePerformed,
     error,
     occurredAt: now
