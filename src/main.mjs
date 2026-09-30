@@ -18,6 +18,10 @@ import {
   buildSoftwareRevertPlan,
   buildSoftwareConnectorLaunchPlan,
   buildDocsSite,
+  buildPlatformScaffoldPlan,
+  buildOnboardingCard,
+  governanceOnboardingDraft,
+  runOnboardingPipeline,
   checkDocsLinks,
   diffDocument,
   parseImplementationTables,
@@ -122,6 +126,10 @@ function registerReadOnlyIpc() {
   ipcMain.handle('docs:build', (_event, root) => buildDocsSite(root));
   ipcMain.handle('docs:conform', (_event, root) => checkDocsLinks(root));
   ipcMain.handle('document:diff', (_event, input) => diffDocument(input.workspaceRoot, input.relativePath));
+  ipcMain.handle('plan:platform-scaffold', (_event, input) => buildPlatformScaffoldPlan(input));
+  ipcMain.handle('onboarding:draft', (_event, input) => governanceOnboardingDraft(input.workspaceRoot, input.platformId));
+  ipcMain.handle('onboarding:card', (_event, input) => buildOnboardingCard(input.workspaceRoot, input.platformId));
+  ipcMain.handle('onboarding:pipeline', (_event, input) => runOnboardingPipeline(input));
   ipcMain.handle('transaction:apply', (event, input) => applyPlan({ ...input, onProgress: (progress) => event.sender.send('transaction:progress', progress) }));
   ipcMain.handle('transaction:verify', (_event, input) => verifyPlanTarget(input));
 }

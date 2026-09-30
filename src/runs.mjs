@@ -5,7 +5,7 @@
 // unknown-schema and are never guessed into a shape.
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { PLATFORM_IDS } from './core/platforms.mjs';
+import { allPlatformIds, PLATFORM_IDS } from './core/platforms.mjs';
 
 const LOCK_SCHEMA_PATTERN = /^ai-run-lock\/v(\d+)\.\d+$/;
 const KNOWN_LOCK_MAJOR = 1;
@@ -98,7 +98,8 @@ export function listPlatformRuns(workspaceRoot, platformId) {
 }
 
 export function listRunLedger(workspaceRoot) {
-  const platforms = PLATFORM_IDS.map((id) => listPlatformRuns(workspaceRoot, id));
+  const platformIds = workspaceRoot ? allPlatformIds(workspaceRoot) : [...PLATFORM_IDS];
+  const platforms = platformIds.map((id) => listPlatformRuns(workspaceRoot, id));
   const totals = Object.fromEntries(platforms.map((platform) => [platform.platform, platform.total]));
   return {
     workspaceRoot,

@@ -12,6 +12,7 @@ import {
   HomePulse,
   InboxPanel,
   IntegrationPanel,
+  OnboardPanel,
   PlanCenterPanel,
   PlanPreview,
   PlatformPanel,
@@ -502,6 +503,7 @@ function App() {
           <InboxPanel api={api} workspace={workspace} />
           <ReleasePanel api={api} workspace={workspace} resources={resources} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} setMessage={setMessage} friendlyError={friendlyError} />
           <PlanCenterPanel api={api} workspace={workspace} />
+          <OnboardPanel api={api} workspace={workspace} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} setMessage={setMessage} friendlyError={friendlyError} />
         </div>
         <PlanPreview planPreview={planPreview} executePlan={executePlan} closePlan={() => { setPlanPreview(null); setPlanPayload(null); }} planWriteKinds={PLAN_WRITE_KINDS} />
       </section>

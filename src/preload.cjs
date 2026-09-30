@@ -47,6 +47,10 @@ contextBridge.exposeInMainWorld('architectureManager', Object.freeze({
   buildDocsSite: (root) => ipcRenderer.invoke('docs:build', root),
   checkDocsLinks: (root) => ipcRenderer.invoke('docs:conform', root),
   documentDiff: (input) => ipcRenderer.invoke('document:diff', input),
+  previewPlatformScaffoldPlan: (input) => ipcRenderer.invoke('plan:platform-scaffold', input),
+  onboardingDraft: (input) => ipcRenderer.invoke('onboarding:draft', input),
+  onboardingCard: (input) => ipcRenderer.invoke('onboarding:card', input),
+  runOnboardingPipeline: (input) => ipcRenderer.invoke('onboarding:pipeline', input),
   applyPlan: (input) => ipcRenderer.invoke('transaction:apply', input),
   onTransactionProgress: (callback) => { const listener = (_event, progress) => callback(progress); ipcRenderer.on('transaction:progress', listener); return () => ipcRenderer.removeListener('transaction:progress', listener); },
   verifyPlan: (input) => ipcRenderer.invoke('transaction:verify', input)
