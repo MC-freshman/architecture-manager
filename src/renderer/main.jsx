@@ -58,6 +58,17 @@ function App() {
   const [integrationText, setIntegrationText] = useState('');
   const [integrationTargetVersion, setIntegrationTargetVersion] = useState('');
   const [platformSuggestion, setPlatformSuggestion] = useState(null);
+  const [dark, setDark] = useState(() => localStorage.getItem('am-theme') === 'dark');
+  useEffect(() => {
+    document.body.classList.toggle('dark', dark);
+    localStorage.setItem('am-theme', dark ? 'dark' : 'light');
+  }, [dark]);
+  const NAV_GROUPS = [
+    ['总览', '.stats-grid'], ['平台', '.panel-grid > .panel:nth-of-type(1)'], ['接入向导', '.panel:nth-of-type(2)'],
+    ['资源', '.resource-rows'], ['软件', '.software-panel'], ['Git', '.git-panel'],
+    ['运行台账', '.panel .rows'], ['文档', '.document-panel'], ['审计', '.audit'], ['收尾', '.workspace-bar']
+  ];
+  const scrollToPanel = (selector) => document.querySelector(selector)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
 
   useEffect(() => api.onTransactionProgress((progress) => setTransactionProgress(progress)), []);
 
@@ -470,10 +481,16 @@ function App() {
           <h1>架构管理台</h1>
           <p className="subtitle">独立用户版 · 只读盘点 + 计划式接入</p>
         </div>
-        <button className="primary-button" onClick={async () => scan(await api.selectWorkspace())} disabled={busy}>
-          {busy ? '扫描中…' : '选择工作区'}
-        </button>
+        <div className="topbar-actions">
+          <button className="primary-button" onClick={async () => scan(await api.selectWorkspace())} disabled={busy}>
+            {busy ? '扫描中…' : '选择工作区'}
+          </button>
+          <button className="small-button theme-toggle" onClick={() => setDark((value) => !value)}>{dark ? '☀ 亮色' : '☾ 暗色'}</button>
+        </div>
       </header>
+      <nav className="nav-chips" aria-label="面板导航">
+        {NAV_GROUPS.map(([label, selector]) => <button className="nav-chip" key={label} onClick={() => scrollToPanel(selector)}>{label}</button>)}
+      </nav>
 
       <section className="workspace-bar">
         <span className="status-dot" />
