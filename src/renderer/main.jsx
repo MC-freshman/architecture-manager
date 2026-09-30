@@ -63,12 +63,22 @@ function App() {
     document.body.classList.toggle('dark', dark);
     localStorage.setItem('am-theme', dark ? 'dark' : 'light');
   }, [dark]);
-  const NAV_GROUPS = [
-    ['总览', '.stats-grid'], ['平台', '.panel-grid > .panel:nth-of-type(1)'], ['接入向导', '.panel:nth-of-type(2)'],
-    ['资源', '.resource-rows'], ['软件', '.software-panel'], ['Git', '.git-panel'],
-    ['运行台账', '.panel .rows'], ['文档', '.document-panel'], ['审计', '.audit'], ['收尾', '.workspace-bar']
+  const [view, setView] = useState(() => localStorage.getItem('am-view') || 'dashboard');
+  useEffect(() => { localStorage.setItem('am-view', view); }, [view]);
+  const VIEWS = [
+    { id: 'dashboard', label: '仪表盘' },
+    { id: 'resources', label: '资源' },
+    { id: 'platform', label: '平台与接入' },
+    { id: 'runs', label: '运行' },
+    { id: 'governance', label: '治理' },
+    { id: 'documents', label: '文档' },
+    { id: 'audit', label: '审计' },
+    { id: 'inbox', label: 'inbox' },
+    { id: 'software', label: '软件' },
+    { id: 'git', label: '仓库' },
+    { id: 'safety', label: '安全/帮助' }
   ];
-  const scrollToPanel = (selector) => document.querySelector(selector)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  const activeView = workspace ? view : 'platform';
 
   useEffect(() => api.onTransactionProgress((progress) => setTransactionProgress(progress)), []);
 
@@ -473,11 +483,41 @@ function App() {
     }
   };
 
+  const renderView = (active) => {
+    switch (active) {
+      case 'dashboard': return <>
+        <DashboardStats inventory={inventory} gitState={gitState} />
+        <HomePulse api={api} workspace={workspace} />
+        <PlanCenterPanel api={api} workspace={workspace} />
+      </>;
+      case 'resources': return <>
+        <ResourcePanel inventory={inventory} resources={resources} resourceFilter={resourceFilter} setResourceFilter={setResourceFilter} targetVersions={targetVersions} setTargetVersions={setTargetVersions} previewResource={previewResource} />
+        <ReleasePanel api={api} workspace={workspace} resources={resources} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} setMessage={setMessage} friendlyError={friendlyError} />
+        <CatalogPanel api={api} workspace={workspace} inventory={inventory} catalogFilter={catalogFilter} setCatalogFilter={setCatalogFilter} agents={agents} skills={skills} skillFilter={skillFilter} setSkillFilter={setSkillFilter} catalogDetail={catalogDetail} setCatalogDetail={setCatalogDetail} skillDetail={skillDetail} setSkillDetail={setSkillDetail} openCatalog={openCatalog} previewRegistryAction={previewRegistryAction} friendlyError={friendlyError} setMessage={setMessage} />
+      </>;
+      case 'platform': return <>
+        {!workspace && <ClonePanel api={api} onCloned={(root) => scan(root)} setMessage={setMessage} friendlyError={friendlyError} />}
+        <PlatformPanel inventory={inventory} showExcluded={showExcluded} setShowExcluded={setShowExcluded} addPlatformDirectory={addPlatformDirectory} previewPlatform={previewPlatform} checkPlatform={checkPlatform} busy={busy} />
+        <IntegrationPanel api={api} workspace={workspace} resources={resources} integrationKind={integrationKind} setIntegrationKind={setIntegrationKind} integrationOptions={integrationOptions} integrationTargetId={integrationTargetId} setIntegrationTargetId={setIntegrationTargetId} integrationMode={integrationMode} setIntegrationMode={setIntegrationMode} integrationPaths={integrationPaths} integrationPath={integrationPath} setIntegrationPath={setIntegrationPath} integrationTarget={integrationTarget} setIntegrationTarget={setIntegrationTarget} integrationText={integrationText} setIntegrationText={setIntegrationText} integrationTargetVersion={integrationTargetVersion} setIntegrationTargetVersion={setIntegrationTargetVersion} platformSuggestion={platformSuggestion} reloadIntegrationTarget={reloadIntegrationTarget} previewIntegration={previewIntegration} friendlyError={friendlyError} setMessage={setMessage} />
+        <OnboardPanel api={api} workspace={workspace} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} setMessage={setMessage} friendlyError={friendlyError} />
+      </>;
+      case 'runs': return <RunsPanel api={api} workspace={workspace} />;
+      case 'governance': return <GovernancePanel api={api} workspace={workspace} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} setMessage={setMessage} friendlyError={friendlyError} />;
+      case 'documents': return <DocumentPanel api={api} workspace={workspace} documentSummaries={documentSummaries} visibleDocuments={visibleDocuments} documentFilter={documentFilter} setDocumentFilter={setDocumentFilter} selectedDocument={selectedDocument} documentDraft={documentDraft} setDocumentDraft={setDocumentDraft} sensitiveConfirmed={sensitiveConfirmed} setSensitiveConfirmed={setSensitiveConfirmed} openDocument={openDocument} previewDocument={previewDocument} setMessage={setMessage} friendlyError={friendlyError} />;
+      case 'audit': return <AuditPanel api={api} />;
+      case 'inbox': return <InboxPanel api={api} workspace={workspace} />;
+      case 'software': return <SoftwarePanel api={api} workspace={workspace} inventory={inventory} software={software} softwareResults={softwareResults} checkSoftware={checkSoftware} previewSoftwareLocation={previewSoftwareLocation} previewSoftware={previewSoftware} previewSoftwareImport={previewSoftwareImport} previewSoftwareRecipe={previewSoftwareRecipe} previewSoftwareRevert={previewSoftwareRevert} previewSoftwareConnectorLaunch={previewSoftwareConnectorLaunch} setMessage={setMessage} />;
+      case 'git': return <GitPanel gitDetails={gitDetails} workspace={workspace} refreshGit={refreshGit} previewGit={previewGit} sensitiveScan={sensitiveScan} />;
+      case 'safety': return <><SafetyPanel /><HelpPanel /></>;
+      default: return null;
+    }
+  };
+
   return (
     <main className="app-shell">
       <header className="topbar">
         <div>
-          <div className="eyebrow">ARCHITECTURE MANAGER · 3.4.0</div>
+          <div className="eyebrow">ARCHITECTURE MANAGER · 0.3.1</div>
           <h1>架构管理台</h1>
           <p className="subtitle">独立用户版 · 只读盘点 + 计划式接入</p>
         </div>
@@ -488,8 +528,8 @@ function App() {
           <button className="small-button theme-toggle" onClick={() => setDark((value) => !value)}>{dark ? '☀ 亮色' : '☾ 暗色'}</button>
         </div>
       </header>
-      <nav className="nav-chips" aria-label="面板导航">
-        {NAV_GROUPS.map(([label, selector]) => <button className="nav-chip" key={label} onClick={() => scrollToPanel(selector)}>{label}</button>)}
+      <nav className="view-tabs" aria-label="视图">
+        {VIEWS.map((item) => <button key={item.id} className={activeView === item.id ? 'view-tab active' : 'view-tab'} onClick={() => setView(item.id)}>{item.label}</button>)}
       </nav>
 
       <section className="workspace-bar">
@@ -501,28 +541,9 @@ function App() {
 
       <section className="content">
         <div className="notice" role="status" aria-live="polite"><strong>当前状态：</strong>{message}</div>
-        {!workspace && <ClonePanel api={api} onCloned={(root) => scan(root)} setMessage={setMessage} friendlyError={friendlyError} />}
         {transactionProgress && <div className="notice" role="progressbar" aria-valuenow={transactionProgress.bytesTotal ? transactionProgress.bytesDone : transactionProgress.filesDone} aria-valuemin={0} aria-valuemax={transactionProgress.bytesTotal || transactionProgress.filesTotal}>正在处理 {transactionProgress.stage}：{transactionProgress.filesDone}/{transactionProgress.filesTotal} 个文件 · {transactionProgress.path}<progress value={transactionProgress.bytesTotal ? transactionProgress.bytesDone : transactionProgress.filesDone} max={transactionProgress.bytesTotal || transactionProgress.filesTotal} /></div>}
-        <DashboardStats inventory={inventory} gitState={gitState} />
-        <HomePulse api={api} workspace={workspace} />
-
-        <div className="panel-grid">
-          <PlatformPanel inventory={inventory} showExcluded={showExcluded} setShowExcluded={setShowExcluded} addPlatformDirectory={addPlatformDirectory} previewPlatform={previewPlatform} checkPlatform={checkPlatform} busy={busy} />
-          <IntegrationPanel api={api} workspace={workspace} resources={resources} integrationKind={integrationKind} setIntegrationKind={setIntegrationKind} integrationOptions={integrationOptions} integrationTargetId={integrationTargetId} setIntegrationTargetId={setIntegrationTargetId} integrationMode={integrationMode} setIntegrationMode={setIntegrationMode} integrationPaths={integrationPaths} integrationPath={integrationPath} setIntegrationPath={setIntegrationPath} integrationTarget={integrationTarget} setIntegrationTarget={setIntegrationTarget} integrationText={integrationText} setIntegrationText={setIntegrationText} integrationTargetVersion={integrationTargetVersion} setIntegrationTargetVersion={setIntegrationTargetVersion} platformSuggestion={platformSuggestion} reloadIntegrationTarget={reloadIntegrationTarget} previewIntegration={previewIntegration} friendlyError={friendlyError} setMessage={setMessage} />
-          <CatalogPanel api={api} workspace={workspace} inventory={inventory} catalogFilter={catalogFilter} setCatalogFilter={setCatalogFilter} agents={agents} skills={skills} skillFilter={skillFilter} setSkillFilter={setSkillFilter} catalogDetail={catalogDetail} setCatalogDetail={setCatalogDetail} skillDetail={skillDetail} setSkillDetail={setSkillDetail} openCatalog={openCatalog} previewRegistryAction={previewRegistryAction} friendlyError={friendlyError} setMessage={setMessage} />
-          <SafetyPanel />
-          <HelpPanel />
-          <ResourcePanel inventory={inventory} resources={resources} resourceFilter={resourceFilter} setResourceFilter={setResourceFilter} targetVersions={targetVersions} setTargetVersions={setTargetVersions} previewResource={previewResource} />
-          <DocumentPanel api={api} workspace={workspace} documentSummaries={documentSummaries} visibleDocuments={visibleDocuments} documentFilter={documentFilter} setDocumentFilter={setDocumentFilter} selectedDocument={selectedDocument} documentDraft={documentDraft} setDocumentDraft={setDocumentDraft} sensitiveConfirmed={sensitiveConfirmed} setSensitiveConfirmed={setSensitiveConfirmed} openDocument={openDocument} previewDocument={previewDocument} setMessage={setMessage} friendlyError={friendlyError} />
-          <SoftwarePanel api={api} workspace={workspace} inventory={inventory} software={software} softwareResults={softwareResults} checkSoftware={checkSoftware} previewSoftwareLocation={previewSoftwareLocation} previewSoftware={previewSoftware} previewSoftwareImport={previewSoftwareImport} previewSoftwareRecipe={previewSoftwareRecipe} previewSoftwareRevert={previewSoftwareRevert} previewSoftwareConnectorLaunch={previewSoftwareConnectorLaunch} setMessage={setMessage} />
-          <GitPanel gitDetails={gitDetails} workspace={workspace} refreshGit={refreshGit} previewGit={previewGit} sensitiveScan={sensitiveScan} />
-          <RunsPanel api={api} workspace={workspace} />
-          <GovernancePanel api={api} workspace={workspace} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} setMessage={setMessage} friendlyError={friendlyError} />
-          <AuditPanel api={api} />
-          <InboxPanel api={api} workspace={workspace} />
-          <ReleasePanel api={api} workspace={workspace} resources={resources} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} setMessage={setMessage} friendlyError={friendlyError} />
-          <PlanCenterPanel api={api} workspace={workspace} />
-          <OnboardPanel api={api} workspace={workspace} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} setMessage={setMessage} friendlyError={friendlyError} />
+        <div className="view-container">
+          {renderView(activeView)}
         </div>
         <PlanPreview planPreview={planPreview} executePlan={executePlan} closePlan={() => { setPlanPreview(null); setPlanPayload(null); }} planWriteKinds={PLAN_WRITE_KINDS} />
       </section>
