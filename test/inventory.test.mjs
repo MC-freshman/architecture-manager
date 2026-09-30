@@ -358,18 +358,29 @@ test('a published recipe stays pending when connector verification cannot comple
 });
 
 test('creates guarded Git plans without applying them', () => {
-  const commit = buildGitPlan({ workspaceRoot: 'C:/workspace', action: 'commit', message: 'update manager', now: '2026-09-25T00:00:00.000Z' });
+  const root = mkdtempSync(join(tmpdir(), 'am-gitplan-'));
+  const run = (args) => spawnSync('git', ['-C', root, ...args], { stdio: 'ignore' });
+  run(['init']);
+  run(['config', 'user.email', 't@t.local']);
+  run(['config', 'user.name', 't']);
+  writeFileSync(join(root, 'README.md'), 'x\n');
+  run(['add', '--', 'README.md']);
+  run(['commit', '-m', 'init']);
+  const commit = buildGitPlan({ workspaceRoot: root, action: 'commit', message: 'update manager', paths: ['README.md'], now: '2026-09-25T00:00:00.000Z' });
   assert.equal(commit.kind, 'git-commit');
   assert.equal(commit.writePerformed, false);
-  assert.deepEqual(commit.steps[0].command, ['git', 'commit', '-m', 'update manager']);
-  const push = buildGitPlan({ workspaceRoot: 'C:/workspace', action: 'push', remote: 'origin' });
+  assert.deepEqual(commit.target.paths, ['README.md']);
+  const push = buildGitPlan({ workspaceRoot: root, action: 'push', remote: 'origin' });
   assert.equal(push.steps[0].force, false);
-  const rollback = buildGitPlan({ workspaceRoot: 'C:/workspace', action: 'rollback', commit: '0123456789abcdef0123456789abcdef01234567' });
+  const rollback = buildGitPlan({ workspaceRoot: root, action: 'rollback', commit: '0123456789abcdef0123456789abcdef01234567' });
   assert.equal(rollback.steps[0].operation, 'revert-commit');
-  const backup = buildGitPlan({ workspaceRoot: 'C:/workspace', action: 'backup', backupName: 'before-upgrade' });
-  assert.match(backup.steps[0].destination, /before-upgrade$/);
-  assert.throws(() => buildGitPlan({ workspaceRoot: 'C:/workspace', action: 'commit', message: '' }), /COMMIT_MESSAGE_REQUIRED/);
-  assert.throws(() => buildGitPlan({ workspaceRoot: 'C:/workspace', action: 'rollback', commit: 'nope' }), /INVALID_COMMIT_SHA/);
+  const backup = buildGitPlan({ workspaceRoot: root, action: 'backup', backupName: 'before-upgrade' });
+  assert.match(backup.target.destination, /before-upgrade$/);
+  assert.throws(() => buildGitPlan({ workspaceRoot: root, action: 'commit', message: '' }), /COMMIT_MESSAGE_REQUIRED/);
+  assert.throws(() => buildGitPlan({ workspaceRoot: root, action: 'commit', message: 'x y z', paths: ['-A'] }), /GIT_ADD_ALL_FORBIDDEN/);
+  assert.throws(() => buildGitPlan({ workspaceRoot: root, action: 'rollback', commit: 'nope' }), /INVALID_COMMIT_SHA/);
+  assert.throws(() => buildGitPlan({ workspaceRoot: root, action: 'branch', branch: '../escape' }), /INVALID_BRANCH_NAME/);
+  rmSync(root, { recursive: true, force: true });
 });
 
 test('rehearses backup and restore on a temporary fixture', () => {

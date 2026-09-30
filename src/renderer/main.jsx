@@ -387,7 +387,12 @@ function App() {
   const previewGit = async (action) => {
     if (!workspace) return;
     const input = { workspaceRoot: workspace, action };
-    if (action === 'commit') input.message = window.prompt('输入提交说明', '更新架构管理台') || '';
+    if (action === 'commit') {
+      input.message = window.prompt('输入提交说明（≥3 字）', '更新架构工作区') || '';
+      input.paths = (window.prompt('输入要提交的相对路径（每行一个；禁止 . 、 -A 、通配符与绝对路径）', '') || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    }
+    if (action === 'branch') input.branch = window.prompt('输入新分支名', '') || '';
+    if (action === 'tag') input.tag = window.prompt('输入新标签名', '') || '';
     if (action === 'push') input.remote = window.prompt('输入远端名称', 'origin') || '';
     if (action === 'rollback') input.commit = window.prompt('输入要回滚的提交 SHA（将生成 revert 计划）', '') || '';
     if (action === 'backup') input.backupName = window.prompt('输入备份名称', `before-${new Date().toISOString().slice(0, 10)}`) || '';
@@ -395,7 +400,7 @@ function App() {
       const plan = await api.previewGitPlan(input);
       setPlanPreview(plan);
       setPlanPayload(null);
-      setMessage(`已生成 Git ${action} 计划。尚未执行任何 Git 或文件写入。`);
+      setMessage(`已生成 Git ${action} 计划。尚未执行任何 Git 命令。`);
     } catch (error) {
       setMessage(`Git 计划被拒绝：${friendlyError(error)}`);
     }

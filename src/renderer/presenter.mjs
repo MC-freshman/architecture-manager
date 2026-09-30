@@ -8,7 +8,13 @@ export const PLAN_WRITE_KINDS = [
   'integration-registry',
   'software-import',
   'software-recipe-publish',
-  'software-revert'
+  'software-revert',
+  'git-commit',
+  'git-branch',
+  'git-tag',
+  'git-push',
+  'git-rollback',
+  'git-backup'
 ];
 
 export function friendlyError(error) {
@@ -40,7 +46,16 @@ export function friendlyError(error) {
     DEFECT_BOOK_ROW_EXISTS: '已存在同号缺陷，登记被阻止。',
     DEFECT_BOOK_FIELD_REQUIRED: '登记缺陷缺少必填字段。',
     DEFECT_BOOK_STATUS_INVALID: '非法的缺陷状态取值。',
-    DEFECT_BOOK_CORRUPT: '缺陷状态簿不是合法 JSON，操作已阻止。'
+    DEFECT_BOOK_CORRUPT: '缺陷状态簿不是合法 JSON，操作已阻止。',
+    GIT_ADD_ALL_FORBIDDEN: '本工作区是白名单式仓库，只允许显式路径提交；. 、 -A 、通配符和绝对路径都被拒绝。',
+    GIT_EXTERNAL_CHANGE: '计划生成后 HEAD 已变化（可能有新提交），计划已过期，请重新生成。',
+    COMMIT_BLOCKED_SENSITIVE: '待提交文件命中敏感内容扫描，提交已阻止。',
+    COMMIT_PATHS_REQUIRED: '请至少填写一个要提交的相对路径。',
+    GIT_REPOSITORY_REQUIRED: '当前工作区不是 Git 仓库。',
+    GIT_COMMAND_FAILED: 'Git 命令执行失败，见详情；未做任何自动恢复。',
+    GIT_BACKUP_DESTINATION_INVALID: '备份目标必须位于 inbox/archive 之下。',
+    INVALID_BRANCH_NAME: '分支名不合法。',
+    INVALID_TAG_NAME: '标签名不合法。'
   };
   return hints[key] ? `${hints[key]}（${key}）${details.length ? `\n${details.join(':').trim()}` : ''}` : code;
 }
