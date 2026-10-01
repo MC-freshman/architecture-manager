@@ -56,7 +56,7 @@ export function readOnboardingConfig({ workspaceRoot, platformId }) {
     clientKind: client.kind || 'cli', clientExecutable: client.executable || '', clientArgs: client.args || [],
     probeTool: client.probeTool || '', probeArguments: client.probeArguments || {},
     gitAuthorName: ctx.config.commitIdentity?.name || '', gitAuthorEmail: ctx.config.commitIdentity?.email || '',
-    runnerVersion: null, contractsVersion: null, scannerVersion: null
+    runnerVersion: ctx.config.runner?.split(/[\\/]/).at(-1) || null, contractsVersion: ctx.config.contracts?.split(/[\\/]/).at(-1) || null, scannerVersion: ctx.config.scannerRelease?.split(/[\\/]/).at(-1) || null
   }, writePerformed: false };
 }
 

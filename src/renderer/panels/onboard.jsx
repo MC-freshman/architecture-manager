@@ -70,7 +70,8 @@ export function OnboardPanel({ api, workspace, inventory, busy = false, setPlanP
       </>}
       {step === 1 && <>
         <p>目标：{platformId || '未选平台'}。三仓根路径自动取当前工作区。</p>
-        {snapshot && <div className="onboarding-versions">{Object.values(snapshot.versions).map((item) => <span className="pill" key={item.id}>{item.id} {item.version}</span>)}</div>}
+        {snapshot && <div className="onboarding-versions">{Object.values(snapshot.versions).map((item) => <span className="pill" key={item.id}>共享默认：{item.id} {item.version}</span>)}</div>}
+        {[['runnerVersion','wf-runner','运行引擎'],['contractsVersion','runtime-contracts','运行契约'],['scannerVersion','repo-lint','资源检查器']].map(([key,id,label]) => <label className="onboarding-field" key={key}><span>{label} · 当前使用 {snapshot?.config?.[key==='runnerVersion' ? 'runner':key==='contractsVersion' ? 'contracts':'scannerRelease']?.split(/[\\/]/).at(-1) || '未配置'}</span><select disabled={working} value={fields[key] || ''} onChange={(event)=>field(key,event.target.value || null)}><option value="">使用共享默认 {snapshot?.versions[id]?.version || ''}</option>{(inventory?.sharedRepositories?.find(repo=>repo.repository==='tool')?.pointers?.find(item=>item.resourceId===id)?.availableVersions || []).map(version=><option key={version} value={version}>{version}</option>)}</select></label>)}
         {fileField('pythonExecutable', 'Python 解释器')}
         <details><summary>高级配置：环境、委派与软件位置</summary>{[['environmentManifest', '环境清单'], ['executionBackend', '隔离后端配置'], ['peerDispatcherModule', '委派 provider'], ['softwareGateway', '软件连接器'], ['softwareEnvironment', '软件本体登记']].map(([key, label]) => fileField(key, label))}
         <label className="onboarding-field"><span>脚本环境目录</span><input value={fields.scriptEnvironment || ''} onChange={(event) => field('scriptEnvironment', event.target.value)} /></label>

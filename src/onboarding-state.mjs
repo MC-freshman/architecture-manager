@@ -11,6 +11,7 @@ import { execFileSync } from 'node:child_process';
 import { onboardingGitPaths } from './onboarding-governance.mjs';
 import { requestOnboardingCancellation } from './core/onboarding-jobs.mjs';
 import { pendingFirstMatrix, mergeFirstMatrix } from './onboarding-recovery.mjs';
+import { patchCertificationSelection } from './core/certification-scope.mjs';
 
 const active = new Map();
 const keyOf = (root, id) => `${resolve(root).toLowerCase()}:${id}`;
@@ -49,6 +50,7 @@ export async function executeOnboardingChecks({ workspaceRoot, platformId, only 
   const firstCertification = readFirstCertification(previous, workspaceRoot, platformId);
   const recovery = !only && !firstCertification ? pendingFirstMatrix(previous,workspaceRoot,platformId,binding,environmentBinding(workspaceRoot,platformId)) : null;
   if (!only && firstCertification?.versionsSha256 === binding.versionsSha256) only = 'expert-task';
+  if(!only && firstCertification) only=patchCertificationSelection(firstCertification,workspaceRoot,platformId,readOnboardingConfig({workspaceRoot,platformId}).config);
   if (previous.configSha256 && previous.configSha256 !== binding.configSha256 && ['running', 'interrupted'].includes(previous.status)) throw new Error('ONBOARDING_RESUME_DRIFT');
   const reusable = previous.configSha256 === binding.configSha256 && previous.versionsSha256 === binding.versionsSha256 && previous.adapterSha256 === binding.adapterSha256 && previous.environmentBindingSha256 === environmentBinding(workspaceRoot, platformId);
   const state = { schema: 'architecture-manager-onboarding/v1', platformId, executionId: reusable ? previous.executionId : randomUUID(), ...binding, status: 'running', startedAt: reusable ? previous.startedAt : new Date().toISOString(), steps: reusable ? (previous.steps || []).filter((step) => step.status === 'passed') : [], stoppedAt: null, writePerformed: true };
