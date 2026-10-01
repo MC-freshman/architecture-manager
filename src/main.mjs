@@ -179,7 +179,7 @@ function registerIpc() {
   ipcMain.handle('plan:platform-providers', (_event, input) => buildOnboardingProvidersPlan(input));
   ipcMain.handle('onboarding:capability-probe', (event, input) => owned(input, (registerCancel) => probeOnboardingCapabilities(input, { registerCancel, onProgress: (progress) => event.sender.send('transaction:progress', progress) })));
   ipcMain.handle('plan:platform-attestation', (_event, input) => buildOnboardingAttestationPlan(input));
-  ipcMain.handle('onboarding:client-probe', (_event, input) => probeOnboardingClient(input));
+  ipcMain.handle('onboarding:client-probe', (_event, input) => owned(input, (registerCancel) => probeOnboardingClient(input, { registerCancel })));
   ipcMain.handle('onboarding:select-file', async () => {
     const result = await dialog.showOpenDialog({ title: '选择解释器、客户端入口或配置文件', properties: ['openFile'] });
     return result.canceled ? null : result.filePaths[0];
