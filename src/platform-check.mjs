@@ -7,6 +7,9 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 import { isRegisteredPlatform } from './core/platforms.mjs';
+import { runOwnedProcess } from './core/owned-process.mjs';
+import { fileURLToPath } from 'node:url';
+import { runtimeFile } from './core/runtime-path.mjs';
 
 function fail(stage, issues, extra = {}) { return { schema: 'architecture-manager-platform-check/v1', stage, issues, ...extra, writePerformed: false }; }
 function reportGaps(report) {
@@ -50,7 +53,7 @@ export function inspectPlatformConnection({ workspaceRoot, platformId }) {
         const reportPath = typeof previous.conformPath === 'string' ? resolve(previous.conformPath) : null;
         const cachedGaps = reportPath && inside(join(platformRoot, 'runtime', 'manager-check'), reportPath) && existsSync(reportPath) ? reportGaps(readJson(reportPath)) : [];
         const issues = (previous.issues || []).filter((issue) => issue !== '调用检查命令执行失败' || !(previous.counts?.fail > 0));
-        return fail(previous.stage, issues, { ...common, configPath, configSha256, evidencePath: previousPath, counts: previous.counts || null, gaps: previous.gaps || cachedGaps, checkedAt: previous.checkedAt || null, evidenceFresh: false });
+        return fail(previous.stage, issues, { ...common, configPath, configSha256, evidencePath: previousPath, commandErrors: previous.commandErrors || [], counts: previous.counts || null, gaps: previous.gaps || cachedGaps, checkedAt: previous.checkedAt || null, evidenceFresh: false });
       }
     } catch { /* A broken old report is not evidence. */ }
   }
@@ -65,7 +68,18 @@ function releaseScript(root, id, subpath) {
   return script;
 }
 
-export async function runPlatformCheck({ workspaceRoot, platformId, mode = 'quick' }) {
+function saveCheck(base, out, result) {
+  const evidencePath = join(out, 'check.json');
+  const content = `${JSON.stringify(result, null, 2)}\n`;
+  writeFileSync(evidencePath, content, { flag: 'wx' });
+  const latest = join(base, 'latest.json');
+  const temporary = `${latest}.${process.pid}.tmp`;
+  writeFileSync(temporary, content, { flag: 'wx' });
+  renameSync(temporary, latest);
+  return { ...result, evidencePath, writePerformed: true };
+}
+
+export async function runPlatformCheck({ workspaceRoot, platformId, mode = 'quick', only = null, stopOnFloorFailure = false, onProgress = () => {}, registerCancel = () => {} }) {
   if (!['quick', 'full'].includes(mode)) throw new Error('INVALID_PLATFORM_CHECK_MODE');
   const root = resolve(workspaceRoot);
   const pre = inspectPlatformConnection({ workspaceRoot: root, platformId });
@@ -77,23 +91,38 @@ export async function runPlatformCheck({ workspaceRoot, platformId, mode = 'quic
   const conform = releaseScript(root, 'platform-conformance', ['conformance', 'conform.py']);
   const matrix = releaseScript(root, 'architecture-ops', ['architecture_ops', 'invocation_matrix.py']);
   const environment = { ...process.env, PYTHONDONTWRITEBYTECODE: '1', PYTHONIOENCODING: 'utf-8' };
+  const config = readJson(pre.configPath); const bridge = readJson(pre.bridgePath);
+  const python = bridge.runner?.python || config.interpreters?.['.py'];
+  if (!python || !existsSync(python)) throw new Error('RUNTIME_PYTHON_REQUIRED');
   const command = async (script, args, timeout) => {
-    try { return { ...await execFileAsync('python', ['-B', script, ...args], { cwd: out, env: environment, timeout, maxBuffer: 16 * 1024 * 1024, windowsHide: true }), exitCode: 0 }; }
+    try { return await runOwnedProcess({ python, args: ['-B', script, ...args], cwd: out, scopeRoot: out, env: environment, timeout, registerCancel }); }
     catch (error) { return { stdout: error.stdout || '', stderr: error.stderr || String(error.message), exitCode: error.code ?? 1 }; }
   };
   const conformPath = join(out, 'conform.json');
   const matrixPath = join(out, 'matrix.json');
+  onProgress({ platformId, phase: '计算能力并集', outputPath: out });
   const conformResult = await command(conform, ['--config', pre.configPath, '--out', conformPath], 120000);
-  const matrixArgs = ['--config', pre.configPath, '--out', matrixPath];
+  if (conformResult.cancelled) throw new Error('ONBOARDING_CANCELLED');
+  let initialFloor = null; try { initialFloor = readJson(conformPath); } catch { /* Empty output is never a pass. */ }
+  if (!initialFloor || (stopOnFloorFailure && (!initialFloor.floorReached || conformResult.exitCode !== 0))) {
+    const result = { schema: 'architecture-manager-platform-check/v1', platformId, mode, stage: 'check-failed', bridgeSha256: pre.bridgeSha256, configSha256: pre.configSha256, conformPath, matrixPath: null, counts: { pass: 0, fail: 0, conform: initialFloor?.counts || null }, gaps: reportGaps(initialFloor), issues: [initialFloor ? `能力地板尚未通过：缺口 ${initialFloor.counts?.declaredAbsent ?? '?'}，未验证 ${initialFloor.counts?.unverified ?? '?'}` : '能力检查未产生可读报告'], checkedAt: new Date().toISOString(), evidenceFresh: true, writePerformed: true };
+    result.commandErrors = conformResult.exitCode !== 0 ? [conformResult.stderr].filter(Boolean).map((item) => String(item).slice(0, 2000)) : [];
+    if (!initialFloor) result.issues = ['能力检查程序未成功产生报告；调用检查尚未执行。请查看命令错误。'];
+    return saveCheck(base, out, result);
+  }
+  const matrixArgs = ['--config', pre.configPath, '--out', matrixPath, '--runs-root', join(out, 'matrix-runs')];
   const exceptionsPath = join(root, platformId, 'bridge', 'invocation-exceptions.json');
   if (existsSync(exceptionsPath)) matrixArgs.push('--exceptions', exceptionsPath);
   if (mode === 'quick') {
     const workflows = readJson(join(root, 'tool', 'registry.json')).workflows || [];
     const selected = workflows.find((item) => item.id === 'expert-task' && item.enabled) || workflows.find((item) => item.enabled && item.id !== 'wf-runner');
     if (!selected) throw new Error('NO_CALLABLE_WORKFLOW_REGISTERED');
-    matrixArgs.push('--only', selected.id);
+    matrixArgs.push('--only', only || selected.id);
   }
-  const matrixResult = await command(matrix, matrixArgs, mode === 'quick' ? 180000 : 1800000);
+  onProgress({ platformId, phase: mode === 'quick' ? '检查受影响调用格' : '首次完整调用矩阵', outputPath: out });
+  const driver = runtimeFile('matrix_driver.py');
+  const matrixResult = await command(driver, [matrix, ...matrixArgs], mode === 'quick' ? 180000 : 1800000);
+  if (matrixResult.cancelled) throw new Error('ONBOARDING_CANCELLED');
   let floor = null;
   let matrixReport = null;
   try { floor = readJson(conformPath); } catch { /* Failure is reported below. */ }
@@ -113,12 +142,9 @@ export async function runPlatformCheck({ workspaceRoot, platformId, mode = 'quic
   if (conformResult.exitCode !== 0 && floor?.floorReached === true) blocking.push('能力检查异常退出，不能据此声明能力地板通过');
   const issues = [...blocking];
   if (floor && !floor.floorReached) issues.push(`能力并集仍有 ${floor.counts?.declaredAbsent ?? '?'} 个缺口，未验证 ${floor.counts?.unverified ?? '?'} 项`);
-  const stage = blocking.length ? 'check-failed' : mode === 'full' && floor.floorReached ? 'complete' : 'callable';
+  const stage = blocking.length ? 'check-failed' : 'callable';
   const gaps = reportGaps(floor);
   const result = { schema: 'architecture-manager-platform-check/v1', platformId, stage, issues, mode, bridgeSha256: pre.bridgeSha256, configSha256: pre.configSha256, counts: { pass: passed, fail: failed, expected: matrixReport?.summary?.EXPECTED ?? null, needsInput: matrixReport?.summary?.['NEEDS-INPUT'] ?? null, conform: floor?.counts || null }, gaps, conformDigest: floor?.conformDigest || null, conformPath, matrixPath, commandErrors: [conformResult.stderr, matrixResult.stderr].filter(Boolean).map((item) => String(item).slice(0, 500)), checkedAt: new Date().toISOString(), evidenceFresh: true };
-  const latest = join(base, 'latest.json');
-  const temporary = `${latest}.${process.pid}.tmp`;
-  writeFileSync(temporary, `${JSON.stringify(result, null, 2)}\n`, { flag: 'wx' });
-  renameSync(temporary, latest);
-  return { ...result, evidencePath: latest, writePerformed: true };
+  result.commandErrors = [conformResult.exitCode !== 0 ? conformResult.stderr : '', matrixResult.exitCode !== 0 ? matrixResult.stderr : ''].filter(Boolean).map((item) => String(item).slice(0, 2000));
+  return saveCheck(base, out, result);
 }

@@ -3,16 +3,22 @@ import React, { useEffect, useState } from 'react';
 const STEPS = ['选择平台', '完整配置', '准备环境', '客户端入口', '检查与接入', '登记与恢复'];
 const EMPTY = { displayName: '', pythonExecutable: '', environmentManifest: '', scriptEnvironment: '', executionBackend: '', peerDispatcherModule: '', peerContentRoot: '', softwareGateway: '', softwareEnvironment: '', clientKind: 'cli', clientExecutable: '', clientArgs: [], probeTool: '', probeArguments: {} };
 
-export function OnboardPanel({ api, workspace, inventory, setPlanPreview, setPlanPayload, setMessage, friendlyError }) {
+export function OnboardPanel({ api, workspace, inventory, busy = false, setPlanPreview, setPlanPayload, setMessage, friendlyError }) {
   const [selection, setSelection] = useState('__new__');
   const [newId, setNewId] = useState('');
   const [step, setStep] = useState(0);
   const [confirmed, setConfirmed] = useState(false);
   const [fields, setFields] = useState(EMPTY);
   const [snapshot, setSnapshot] = useState(null);
-  const [working, setWorking] = useState(false);
+  const [localWorking, setWorking] = useState(false);
+  const working = localWorking || busy;
   const [result, setResult] = useState(null);
+  const [capabilityEvidence, setCapabilityEvidence] = useState(null);
   const [localError, setLocalError] = useState('');
+  const [runtime, setRuntime] = useState(null);
+  const [softwareBodies, setSoftwareBodies] = useState({});
+  const [softwarePython, setSoftwarePython] = useState('');
+  const [backendFields, setBackendFields] = useState({ distro: '', guestInterpreter: '/usr/bin/python3', wslExecutable: '' });
   const platformId = selection === '__new__' ? newId : selection;
   const input = () => ({ workspaceRoot: workspace, platformId, fields, confirmed });
   const field = (key, value) => setFields((old) => ({ ...old, [key]: value }));
@@ -46,6 +52,7 @@ export function OnboardPanel({ api, workspace, inventory, setPlanPreview, setPla
     <div className="panel-title"><span>平台接入向导</span><span className="muted">配置、环境、入口与验证由管理台执行</span></div>
     {!workspace ? <div className="empty">请先选择你的架构工作区。</div> : <>
       <nav className="onboarding-steps" aria-label="接入步骤">{STEPS.map((name, index) => <button className={`small-button ${step === index ? 'primary-small' : ''}`} key={name} onClick={() => setStep(index)}>{index + 1}. {name}</button>)}</nav>
+      <div className="onboarding-automatic"><strong>配置好必要位置后，确认一次即可连续接入</strong><p>管理台依次准备环境、绑定 provider、实测能力、安装标准 CLI/MCP 入口、检查、登记并提交配置。失败会保留恢复点；厂商原生客户端注册会另外显示。</p><button className="primary-small small-button" disabled={working || !snapshot || (selection === '__new__' && !confirmed)} onClick={() => act(() => api.previewAutomaticOnboardingPlan({ ...input(), backendFields, bodies: Object.fromEntries(Object.entries(softwareBodies).filter(([, path]) => path)), interpreterAliases: softwarePython ? { PPython: softwarePython } : {} }), '连续接入计划已生成；请核对平台、安装位置和版本后确认。')}>预览一键接入／继续</button></div>
       {localError && <div role="alert" className="onboarding-error">{localError}</div>}
       {step === 0 && <>
         <label className="onboarding-field"><span>操作对象</span><select value={selection} onChange={(event) => { setSelection(event.target.value); setResult(null); setConfirmed(false); }}><option value="__new__">新增平台</option>{(inventory?.platforms || []).map((item) => <option key={item.id} value={item.id}>{item.id} · 修复或升级接入</option>)}</select></label>
@@ -66,10 +73,16 @@ export function OnboardPanel({ api, workspace, inventory, setPlanPreview, setPla
       {step === 2 && <>
         <p>所需解释器和库安装在 {platformId || '所选平台'}/runtime 内；缺少系统设施时会暂停并告诉你需要点击什么。</p>
         {fileField('pythonExecutable', '用于准备环境的 Python')}
+        <button className="small-button" disabled={working} onClick={() => act(async () => { const value = await api.detectOnboardingRuntime({ pythonExecutable: fields.pythonExecutable }); setRuntime(value); setBackendFields((old) => ({ ...old, wslExecutable: value.wslExecutable || '', distro: value.distributions[0] || '' })); return value; })}>检测解释器与 WSL</button>
+        {runtime && <><label className="onboarding-field"><span>隔离环境</span><select value={backendFields.distro} onChange={(event) => setBackendFields({ ...backendFields, distro: event.target.value })}><option value="">选择已安装的 WSL 环境</option>{runtime.distributions.map((name) => <option key={name}>{name}</option>)}</select></label><button className="small-button" disabled={working || !backendFields.distro} onClick={() => act(() => api.previewOnboardingBackendPlan({ workspaceRoot: workspace, platformId, fields: backendFields }), '隔离后端计划已生成。')}>保存所选隔离后端</button></>}
+        {fileField('executionBackend', '本平台隔离后端配置')}
         <button className="small-button primary-small" disabled={working || !snapshot || !snapshot.exists || !api.previewOnboardingRuntimePlan} onClick={() => act(() => api.previewOnboardingRuntimePlan(input()), '环境准备计划已生成；安装前先核对下载和磁盘位置。')}>准备独立运行环境</button>
         <p className="muted">软件本体位置与 provider 可在软件中心绑定；未安装的项目会保留明确缺口。</p>
+        <details><summary>绑定软件本体与平台 provider</summary>{(inventory?.repositories?.software?.entries || inventory?.software || []).filter((entry) => entry.id && !entry.id.startsWith('_')).map((entry) => <label className="onboarding-field" key={entry.id}><span>{entry.id} 的程序文件</span><div className="onboarding-input"><input value={softwareBodies[entry.id] || ''} onChange={(event) => setSoftwareBodies({ ...softwareBodies, [entry.id]: event.target.value })} /><button className="small-button" onClick={async () => { const path = await api.selectOnboardingFile(); if (path) setSoftwareBodies({ ...softwareBodies, [entry.id]: path }); }}>选择文件</button></div></label>)}<label className="onboarding-field"><span>软件配方 PPython 解释器（如需要）</span><div className="onboarding-input"><input value={softwarePython} onChange={(event) => setSoftwarePython(event.target.value)} /><button className="small-button" onClick={async () => { const path = await api.selectOnboardingFile(); if (path) setSoftwarePython(path); }}>选择文件</button></div></label><button className="small-button" disabled={working || !snapshot?.exists} onClick={() => act(() => api.previewOnboardingProvidersPlan({ workspaceRoot: workspace, platformId, bodies: Object.fromEntries(Object.entries(softwareBodies).filter(([, path]) => path)), interpreterAliases: softwarePython ? { PPython: softwarePython } : {} }), 'provider 和软件位置计划已生成；保存后仍需真实探测。')}>保存软件位置与 provider</button></details>
       </>}
       {step === 3 && <>
+        <button className="small-button primary-small" disabled={working || !snapshot?.exists} onClick={() => act(() => api.previewOnboardingClientPlan({ workspaceRoot: workspace, platformId }), '标准 CLI 客户端和 MCP 服务安装计划已生成。')}>安装标准 CLI 客户端入口</button>
+        <p>标准 CLI 入口通过真实 MCP 连接调用维护探针，无需模型生成回复。厂商原生客户端注册另行显示，不会由此标成通过。</p>
         <label className="onboarding-field"><span>客户端接口</span><select value={fields.clientKind} onChange={(event) => field('clientKind', event.target.value)}><option value="cli">JSON CLI 客户端入口</option><option value="mcp-stdio">MCP stdio 客户端入口</option><option value="manual-native">原生客户端测试回执</option></select></label>
         {fileField('clientExecutable', '客户端入口程序')}
         <label className="onboarding-field"><span>入口参数（每行一项）</span><textarea value={(fields.clientArgs || []).join('\n')} onChange={(event) => field('clientArgs', event.target.value.split('\n').filter(Boolean))} /></label>
@@ -80,6 +93,8 @@ export function OnboardPanel({ api, workspace, inventory, setPlanPreview, setPla
       </>}
       {step === 4 && <>
         <p>开始前请保存配置并完成环境与入口准备。首次接入执行完整矩阵；失败会停在具体步骤。</p>
+        <button className="small-button" disabled={working || !snapshot?.exists} onClick={() => act(async () => { const value = await api.probeOnboardingCapabilities({ workspaceRoot: workspace, platformId }); setCapabilityEvidence(value.evidencePath); return value; }, '能力探针已返回，请查看实际通过项和缺口。')}>实测所需能力</button>
+        <button className="small-button" disabled={working || !capabilityEvidence} onClick={() => act(() => api.previewOnboardingAttestationPlan({ workspaceRoot: workspace, platformId, evidencePath: capabilityEvidence }), '仅将真实通过项生成能力更新计划。')}>保存真实能力声明</button>
         <button className="small-button primary-small" disabled={working || !snapshot?.exists} onClick={run}>{working ? '接入检查中…' : '开始接入／继续检查'}</button>
         <button className="small-button" disabled={!working || !api.cancelOnboarding} onClick={() => api.cancelOnboarding({ workspaceRoot: workspace, platformId })}>停止本次接入</button>
       </>}
@@ -87,6 +102,7 @@ export function OnboardPanel({ api, workspace, inventory, setPlanPreview, setPla
         <p>治理文档和 Git 记录与检查证据一起保存。只有全部必需步骤通过，才显示“接入完成”。</p>
         <button className="small-button" disabled={working || !snapshot?.exists || !api.previewOnboardingGovernancePlan} onClick={() => act(() => api.previewOnboardingGovernancePlan({ workspaceRoot: workspace, platformId }), '治理文档计划已生成。')}>预览治理登记</button>
         <button className="small-button" disabled={working || !snapshot?.exists || !api.readOnboardingState} onClick={() => act(() => api.readOnboardingState({ workspaceRoot: workspace, platformId }))}>查看接入记录与恢复点</button>
+        <button className="small-button primary-small" disabled={working || !snapshot?.exists} onClick={() => act(() => api.previewOnboardingFinalizePlan({ workspaceRoot: workspace, platformId }), '接入入库计划已生成，提交后自动核验完成条件。')}>提交配置并完成接入</button>
       </>}
       {result && <div className="onboarding-result" role="status"><strong>{result.status || result.stage || (result.stoppedAt ? `停止在：${result.stoppedAt}` : '已返回')}</strong>{(result.steps || []).map((item) => <p key={item.step}>{item.step}：{item.status || item.result?.stage || '已返回'} {(item.result?.issues || []).join('；')}</p>)}{result.issues?.map((issue, index) => <p key={index}>{issue}</p>)}<details><summary>证据与读数</summary><pre>{JSON.stringify(result, null, 2)}</pre></details></div>}
       <div className="onboarding-footer"><button className="small-button" disabled={step === 0} onClick={() => setStep(step - 1)}>上一步</button><span>{step + 1} / {STEPS.length}</span><button className="small-button" disabled={step === STEPS.length - 1 || !platformId} onClick={() => setStep(step + 1)}>下一步</button></div>

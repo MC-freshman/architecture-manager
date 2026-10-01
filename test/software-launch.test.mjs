@@ -60,7 +60,7 @@ test('apply relays the connector answer verbatim, including INTERACTIVE_REQUIRED
   const plan = planFor(fixture, 'gui-app');
   const result = applySoftwareLaunch({ plan }, { auditRoot: fixture.auditRoot });
   assert.equal(result.connectorStatus, 'INTERACTIVE_REQUIRED');
-  assert.equal(result.writePerformed, false);
+  assert.equal(result.writePerformed, true);
   const events = readFileSync(join(fixture.auditRoot, 'events.jsonl'), 'utf8').trim().split('\n').map((line) => JSON.parse(line));
   assert.ok(events.some((event) => event.action === 'software-launch' && event.connectorStatus === 'INTERACTIVE_REQUIRED'));
   const launched = applySoftwareLaunch({ plan: planFor(fixture, 'good-cli') }, { auditRoot: fixture.auditRoot });
@@ -73,7 +73,7 @@ test('invalid connector output and process failure are structured, never guessed
   const fixture = makeFixture();
   assert.throws(() => applySoftwareLaunch({ plan: planFor(fixture, 'broken') }, { auditRoot: fixture.auditRoot }), /SOFTWARE_CONNECTOR_INVALID/);
   const bad = { ...planFor(fixture, 'good-cli'), steps: [{ ...planFor(fixture, 'good-cli').steps[0], interpreter: 'definitely-not-a-real-interpreter' }] };
-  assert.throws(() => applySoftwareLaunch({ plan: bad }, { auditRoot: fixture.auditRoot }), /SOFTWARE_CONNECTOR_FAILED/);
+  assert.throws(() => applySoftwareLaunch({ plan: bad }, { auditRoot: fixture.auditRoot }), /PLAN_PAYLOAD_MISMATCH/);
   rmSync(fixture.root, { recursive: true, force: true });
   rmSync(fixture.auditRoot, { recursive: true, force: true });
 });

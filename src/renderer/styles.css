@@ -172,3 +172,4 @@ body { background: var(--bg); color: var(--text); }
 .onboarding-error { padding: 12px; color: var(--bad); background: var(--bad-bg); white-space: pre-wrap; overflow-wrap: anywhere; }
 .onboarding-result { margin-top: 16px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; max-height: 38vh; overflow: auto; }
 .onboarding-footer { justify-content: space-between; border-top: 1px solid var(--line); padding-top: 12px; }
+.onboarding-automatic { padding: 14px; margin: 14px 0; background: var(--surface-soft, #edf5ff); border: 1px solid #bfdbfe; border-radius: 8px; }

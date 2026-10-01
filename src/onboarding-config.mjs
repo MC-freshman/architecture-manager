@@ -48,7 +48,7 @@ export function readOnboardingConfig({ workspaceRoot, platformId }) {
   return { platformId, exists: existsSync(join(ctx.root, platformId)), configPath: ctx.configPath, config: ctx.config, versions, client, fields: {
     displayName: ctx.bridge.displayName || platformId,
     pythonExecutable: ctx.bridge.runner?.python || ctx.config.interpreters?.['.py'] || '',
-    environmentManifest: ctx.config.environmentManifest || '', scriptEnvironment: ctx.config.scriptEnvironment || '', executionBackend: ctx.config.executionBackend || '',
+    environmentManifest: ctx.config.environmentManifest || '', scriptEnvironment: ctx.config.scriptEnvironment || '', executionBackend: ctx.config.executionBackend || (existsSync(join(ctx.root, platformId, 'bridge/backends/manager-sealed.json')) ? join(ctx.root, platformId, 'bridge/backends/manager-sealed.json') : ''),
     peerDispatcherModule: ctx.config.peerDispatcherModule || '', peerContentRoot: ctx.config.peerContentRoot || '',
     softwareGateway: ctx.config.softwareGateway?.replaceAll('\\', '/').includes('/_connector/versions/') ? ctx.config.softwareGateway : join(release(ctx.root, 'software', '_connector').path, 'connector.py'), softwareEnvironment: ctx.config.softwareEnvironment || '',
     clientKind: client.kind || 'cli', clientExecutable: client.executable || '', clientArgs: client.args || [],
@@ -98,8 +98,11 @@ export function buildOnboardingConfigPlan({ workspaceRoot, platformId, fields = 
   ownPath(root, platformId, config.softwareGatewayConfig);
   const bridge = { ...ctx.bridge, schema: 'ai-platform-bridge/v1.1', platform: platformId, displayName: fields.displayName || ctx.bridge.displayName || platformId, shared: { ...ctx.bridge.shared, toolRegistry: join(root, 'tool/registry.json'), agentRegistry: join(root, 'agent/registry.json'), softwareRegistry: join(root, 'software/registry.json'), architecturePrompt: join(root, 'AI_ARCHITECTURE_SYSTEM_PROMPT.md'), readOnly: true }, runtimeRoot: join(root, platformId, 'runtime'), modes: ['workflow', 'agent-workflow'], defaults: { ...ctx.bridge.defaults, workflowVersions: { ...ctx.bridge.defaults?.workflowVersions, 'repo-lint': scanner.version } }, runner: { ...ctx.bridge.runner, enabled: true, config: join(root, ctx.configPath), release: runner.path, ...(python ? { python } : {}) } };
   const capabilities = Object.keys(ctx.capabilities).length ? ctx.capabilities : { schema: 'ai-platform-capabilities/v1', platform: platformId, checks: {}, permissionAdapters: [], profiles: {}, descriptor: { schema: 'ai-platform-descriptor/v2', platformId, protocols: ['ai-run-protocol/v1.1', 'ai-run-protocol/v1.2', 'ai-run-protocol/v1.3'], operations: ['prepare', 'next', 'submit', 'status', 'stop'], actions: {}, profiles: {}, enforcement: 'mediated', recovery: ['replay'] }, declaredAbsent: {}, unverified: {}, gapPlan: {} };
+  bridge.runner.version = runner.version;
   if (!['cli', 'mcp-stdio', 'manual-native'].includes(fields.clientKind || 'cli')) throw new Error('CLIENT_ADAPTER_UNSUPPORTED');
-  const client = { schema: 'architecture-manager-client/v1', platformId, kind: fields.clientKind || 'cli', executable: fields.clientExecutable || '', args: fields.clientArgs || [], probeTool: fields.probeTool || '', probeArguments: fields.probeArguments || {}, nativeVerified: false };
+  const oldClient = read(targetPath(root, `${platformId}/bridge/client-adapter.json`));
+  const client = { ...oldClient, schema: 'architecture-manager-client/v1', platformId, kind: fields.clientKind || oldClient.kind || 'cli', executable: fields.clientExecutable || oldClient.executable || '', args: fields.clientArgs || oldClient.args || [], probeTool: fields.probeTool || oldClient.probeTool || '', probeArguments: fields.probeArguments || {}, nativeVerified: false };
+  if (client.kind !== oldClient.kind || client.executable !== oldClient.executable || JSON.stringify(client.args) !== JSON.stringify(oldClient.args)) { delete client.preset; delete client.installedClient; delete client.server; }
   if (!Array.isArray(client.args) || client.args.some((value) => typeof value !== 'string')) throw new Error('CLIENT_ARGUMENTS_INVALID');
   const proposed = [
     { path: `${platformId}/bridge.json`, content: stringify(bridge) },

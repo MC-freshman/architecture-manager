@@ -16,5 +16,13 @@ export { buildSoftwareConnectorLaunchPlan } from '../software-launch.mjs';
 export { buildDocsSite, checkDocsLinks } from '../docs-ops.mjs';
 export { buildPlatformScaffoldPlan } from '../onboarding.mjs';
 export { buildOnboardingConfigPlan } from '../onboarding-config.mjs';
+export { buildOnboardingRuntimePlan, buildOnboardingBackendPlan } from '../onboarding-runtime.mjs';
+export { buildOnboardingClientPlan, probeOnboardingClient } from '../onboarding-client.mjs';
+export { buildOnboardingProvidersPlan } from '../onboarding-providers.mjs';
+export { probeOnboardingCapabilities, buildOnboardingAttestationPlan } from '../onboarding-attestation.mjs';
+export { buildOnboardingGovernancePlan } from '../onboarding-governance.mjs';
+export { buildOnboardingFinalizePlan } from '../onboarding-finalize.mjs';
+export { buildAutomaticOnboardingPlan } from '../onboarding-auto.mjs';
+export { executeOnboardingChecks, cancelOnboarding, markOnboardingRecorded } from '../onboarding-state.mjs';
 export { buildWorkspaceClonePlan, applyWorkspaceClone } from '../workspace-bootstrap.mjs';
 

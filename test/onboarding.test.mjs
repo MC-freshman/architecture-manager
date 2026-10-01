@@ -67,15 +67,16 @@ test('scaffold failure cleans up created files', () => {
   rmSync(fixture.auditRoot, { recursive: true, force: true });
 });
 
-test('governance drafts cover the five documents and the card is honest about the AI floor', () => {
+test('governance drafts cover five documents and the current card requires a client loop without maintenance AI', () => {
   const fixture = makeWorkspace();
   const drafts = governanceOnboardingDraft(fixture.root, 'newp');
   assert.equal(drafts.drafts.length, 5);
   assert.ok(drafts.drafts.some((draft) => draft.path === 'AGENTS.md'));
   const card = buildOnboardingCard(fixture.root, 'newp');
   assert.equal(card.scaffoldPresent, false);
-  assert.match(card.card, /\/wf repo-lint/);
-  assert.match(card.card, /不得以本格替代/);
+  assert.match(card.card, /challenge/);
+  assert.match(card.card, /不得以工具握手替代/);
+  assert.doesNotMatch(card.card, /唯一需要平台 AI/);
   rmSync(fixture.root, { recursive: true, force: true });
   rmSync(fixture.auditRoot, { recursive: true, force: true });
 });

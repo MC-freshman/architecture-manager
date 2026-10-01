@@ -28,6 +28,8 @@ import { friendlyError, PLAN_WRITE_KINDS } from './presenter.mjs';
 const api = window.architectureManager;
 
 function App() {
+  const [appVersion, setAppVersion] = useState('读取中');
+  useEffect(() => { api.getAppVersion().then(setAppVersion).catch(() => setAppVersion('版本未读取')); }, []);
   const [workspace, setWorkspace] = useState(null);
   const [inventory, setInventory] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -243,7 +245,7 @@ function App() {
       setInventory(refreshed);
       setMessage(`${platform.id} 检查结果：${result.stage}；${result.issues.length ? result.issues.join('；') : '无缺口'}。证据：${result.evidencePath}`);
     } catch (error) { setMessage(`${platform.id} 检查失败：${friendlyError(error)}`); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setTransactionProgress(null); }
   };
 
   const addPlatformDirectory = async () => {
@@ -252,7 +254,7 @@ function App() {
     if (!selected) { setMessage('已取消选择平台目录，未生成计划。'); return; }
     const platformId = selected.split(/[\\/]/).filter(Boolean).pop();
     if (!inventory?.platforms?.some((item) => item.id === platformId)) {
-      setMessage(`未识别的平台目录：${platformId}。请选择 codex、qoder、doubao、workbuddy、zcode 或 dsh 目录。`);
+      setMessage(`未识别的平台目录：${platformId}。请选择已有合法 bridge.json 的平台，或使用接入向导创建并配置新平台。`);
       return;
     }
     try {
@@ -391,9 +393,9 @@ function App() {
     } catch (error) { setMessage(`配方计划被拒绝：${friendlyError(error)}`); }
   };
 
-  const previewSoftwareLocation = async (item) => {
+  const previewSoftwareLocation = async (item, platformId) => {
     try {
-      const plan = await api.previewSoftwarePlan({ workspaceRoot: workspace, softwareId: item.id, mode: 'open-location' });
+      const plan = await api.previewSoftwarePlan({ workspaceRoot: workspace, softwareId: item.id, platformId, mode: 'open-location' });
       setPlanPreview(plan);
       setPlanPayload(null);
       setMessage(`已生成打开 ${item.id} 本体目录的计划，确认后才会打开资源管理器。`);
@@ -402,11 +404,10 @@ function App() {
     }
   };
 
-  const previewSoftwareConnectorLaunch = async (item) => {
-    const platformId = window.prompt('通过哪个平台的连接器启动？（如 zcode / qoder）', 'zcode') || '';
+  const previewSoftwareConnectorLaunch = async (item, platformId) => {
     if (!workspace || !platformId) return;
     try {
-      const plan = await api.previewSoftwareConnectorLaunchPlan({ workspaceRoot, platformId, softwareId: item.id });
+      const plan = await api.previewSoftwareConnectorLaunchPlan({ workspaceRoot: workspace, platformId, softwareId: item.id });
       setPlanPreview(plan);
       setPlanPayload(null);
       setMessage(`已生成 ${item.id} 经 ${platformId} 连接器的启动计划；连接器的答复会原样转达（含 INTERACTIVE_REQUIRED / 漂移），不会美化。`);
@@ -450,7 +451,7 @@ function App() {
     if (planPreview.kind === 'software-action' && planPreview.target?.mode === 'open-location') {
       if (!await api.confirm(`确认打开软件目录？\n\n${planPreview.target.bodyPath}`)) return;
       try {
-        await api.openSoftwareLocation({ workspaceRoot: workspace, softwareId: planPreview.target.softwareId, expectedPath: planPreview.target.bodyPath });
+        await api.openSoftwareLocation({ workspaceRoot: workspace, softwareId: planPreview.target.softwareId, platformId: planPreview.target.platformId, expectedPath: planPreview.target.bodyPath });
         setPlanPreview(null);
         setMessage('已打开软件本体目录。');
       } catch (error) {
@@ -474,7 +475,7 @@ function App() {
       setTargetVersions({});
       setPlanPreview(null);
       setPlanPayload(null);
-      setMessage(planPreview.kind === 'software-import' ? `软件本体安置与恢复演练${verification.ok ? '通过' : '未通过'}；尚未发布配方，也未接入连接器。` : planPreview.kind === 'software-recipe-publish' ? applied.status === 'published-version-only' && verification.ok ? `版本查询已发布，连接器健康检查和单格认证均通过；其它功能尚需适配。` : `配方文件${verification.ok ? '已发布' : '回读失败'}，但软件仍待验证：${applied.check?.issues?.join('；') || '缺少健康检查结果'}。` : planPreview.kind === 'software-revert' ? `软件撤销/停用${verification.ok ? '已验证' : '验证未通过'}；${applied.releaseRetained ? '已发布版本按只读规则保留。' : '备份保留，本体已移入垃圾桶。'}` : `计划已${applied.status === 'already-applied' ? '确认已执行' : '执行'}，验证${verification.ok ? '通过' : '未通过'}。`);
+setMessage(planPreview.kind === 'software-launch' ? `连接器答复：${applied.connectorStatus}。${applied.connectorReply?.error?.message || ''}启动只在连接器明确返回存活会话时成立。` : planPreview.kind === 'software-import' ? `软件本体安置与恢复演练${verification.ok ? '通过' : '未通过'}；尚未发布配方，也未接入连接器。` : planPreview.kind === 'software-recipe-publish' ? applied.status === 'published-version-only' && verification.ok ? `版本查询已发布，连接器健康检查和单格认证均通过；其它功能尚需适配。` : `配方文件${verification.ok ? '已发布' : '回读失败'}，但软件仍待验证：${applied.check?.issues?.join('；') || '缺少健康检查结果'}。` : planPreview.kind === 'software-revert' ? `软件撤销/停用${verification.ok ? '已验证' : '验证未通过'}；${applied.releaseRetained ? '已发布版本按只读规则保留。' : '备份保留，本体已移入垃圾桶。'}` : `计划已${applied.status === 'already-applied' ? '确认已执行' : '执行'}，验证${verification.ok ? '通过' : '未通过'}。`);
     } catch (error) {
       setMessage(`计划执行失败：${friendlyError(error)}`);
     } finally {
@@ -497,9 +498,9 @@ function App() {
       </>;
       case 'platform': return <>
         {!workspace && <ClonePanel api={api} onCloned={(root) => scan(root)} setMessage={setMessage} friendlyError={friendlyError} />}
+        <OnboardPanel api={api} workspace={workspace} inventory={inventory} busy={busy} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} setMessage={setMessage} friendlyError={friendlyError} />
         <PlatformPanel inventory={inventory} showExcluded={showExcluded} setShowExcluded={setShowExcluded} addPlatformDirectory={addPlatformDirectory} previewPlatform={previewPlatform} checkPlatform={checkPlatform} busy={busy} />
         <IntegrationPanel api={api} workspace={workspace} resources={resources} integrationKind={integrationKind} setIntegrationKind={setIntegrationKind} integrationOptions={integrationOptions} integrationTargetId={integrationTargetId} setIntegrationTargetId={setIntegrationTargetId} integrationMode={integrationMode} setIntegrationMode={setIntegrationMode} integrationPaths={integrationPaths} integrationPath={integrationPath} setIntegrationPath={setIntegrationPath} integrationTarget={integrationTarget} setIntegrationTarget={setIntegrationTarget} integrationText={integrationText} setIntegrationText={setIntegrationText} integrationTargetVersion={integrationTargetVersion} setIntegrationTargetVersion={setIntegrationTargetVersion} platformSuggestion={platformSuggestion} reloadIntegrationTarget={reloadIntegrationTarget} previewIntegration={previewIntegration} friendlyError={friendlyError} setMessage={setMessage} />
-        <OnboardPanel api={api} workspace={workspace} inventory={inventory} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} setMessage={setMessage} friendlyError={friendlyError} />
       </>;
       case 'runs': return <RunsPanel api={api} workspace={workspace} />;
       case 'governance': return <GovernancePanel api={api} workspace={workspace} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} setMessage={setMessage} friendlyError={friendlyError} />;
@@ -517,7 +518,7 @@ function App() {
     <main className="app-shell">
       <header className="topbar">
         <div>
-          <div className="eyebrow">ARCHITECTURE MANAGER · 0.3.1</div>
+          <div className="eyebrow">ARCHITECTURE MANAGER · {appVersion}</div>
           <h1>架构管理台</h1>
           <p className="subtitle">独立用户版 · 只读盘点 + 计划式接入</p>
         </div>
@@ -541,7 +542,7 @@ function App() {
 
       <section className="content">
         <div className="notice" role="status" aria-live="polite"><strong>当前状态：</strong>{message}</div>
-        {transactionProgress && <div className="notice" role="progressbar" aria-valuenow={transactionProgress.bytesTotal ? transactionProgress.bytesDone : transactionProgress.filesDone} aria-valuemin={0} aria-valuemax={transactionProgress.bytesTotal || transactionProgress.filesTotal}>正在处理 {transactionProgress.stage}：{transactionProgress.filesDone}/{transactionProgress.filesTotal} 个文件 · {transactionProgress.path}<progress value={transactionProgress.bytesTotal ? transactionProgress.bytesDone : transactionProgress.filesDone} max={transactionProgress.bytesTotal || transactionProgress.filesTotal} /></div>}
+        {transactionProgress && <div className="notice" role="status">正在处理：{transactionProgress.phase || transactionProgress.stage}{transactionProgress.reused ? '（复用有效证据）' : ''}{transactionProgress.path && ` · ${transactionProgress.path}`}<progress value={transactionProgress.bytesDone ?? transactionProgress.filesDone ?? transactionProgress.completed} max={transactionProgress.bytesTotal || transactionProgress.filesTotal || transactionProgress.total} />{transactionProgress.platformId && busy && <button className="small-button" onClick={() => api.cancelOnboarding({ workspaceRoot: workspace, platformId: transactionProgress.platformId })}>停止本次操作</button>}</div>}
         <div className="view-container">
           {renderView(activeView)}
         </div>

@@ -43,7 +43,7 @@ export function runnerConfig(root, platformId) {
 export function softwareConnectorStatus(root, platformId) {
   try {
     const connector = runnerConfig(root, platformId);
-    return { ready: true, gatewayPath: connector.gatewayPath, configPath: connector.path };
+    return { ready: true, gatewayPath: connector.gatewayPath, configPath: connector.path, bodies: connector.value.bodies || {} };
   } catch (error) {
     return { ready: false, reason: String(error?.message || error) };
   }

@@ -184,13 +184,13 @@ export function buildOnboardingCard(workspaceRoot, platformId) {
     platformId,
     scaffoldPresent: exists,
     card: [
-      `【真实提交一格指令卡 · ${platformId}】`,
-      '1. 打开该平台自己的 AI 会话（这是唯一需要平台 AI 的环节）。',
-      '2. 在会话里执行：/wf repo-lint 对当前工作区做一次只读扫描并输出结论。',
-      '3. 回到管理台读回核验：runtime/runs/<run-id>/run-lock.json 应存在，selection.workflow 应为 workflow:repo-lint。',
-      '4. 该格通过后，矩阵 FAIL 0 与 conform 0 declaredAbsent 仍需按判据完成；不得以本格替代。'
+      `【无需维护型 AI 的接入指引 · ${platformId}】`,
+      '1. 在平台接入向导选择本平台，保存配置、独立环境与客户端入口。',
+      '2. 运行客户端工具回环：真实 CLI/MCP 入口返回本次 challenge 与配置、钉版摘要。',
+      '3. 首次接入完成本平台 conform 和完整矩阵；后续修复仅重跑受影响格。',
+      '4. 应用治理登记并提交配置，回读接入完成记录；不得以工具握手替代全部判据。业务 AI 输出质量另行验证。'
     ].join('\n'),
-    readback: ['run-lock.json 存在', 'schemaVersion 为 ai-run-lock/v1.x', 'selection.workflow 命中', '终态非 prepared']
+    readback: ['配置与环境摘要匹配', '本次客户端 challenge 回执匹配', '首次矩阵 FAIL/NEEDS-INPUT 为 0', 'conform floorReached 为 true', '治理和 Git 回读通过']
   };
 }
 

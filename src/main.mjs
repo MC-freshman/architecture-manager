@@ -1,7 +1,8 @@
 import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron';
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, statSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { startOnboardingJob } from './core/onboarding-jobs.mjs';
 import {
   applyPlan,
   buildDefectBookEditPlan,
@@ -21,6 +22,21 @@ import {
   buildPlatformScaffoldPlan,
   buildOnboardingConfigPlan,
   readOnboardingConfig,
+  detectRuntime,
+  buildOnboardingRuntimePlan,
+  buildOnboardingBackendPlan,
+  buildOnboardingClientPlan,
+  probeOnboardingClient,
+  buildOnboardingProvidersPlan,
+  probeOnboardingCapabilities,
+  buildOnboardingAttestationPlan,
+  buildOnboardingGovernancePlan,
+  buildOnboardingFinalizePlan,
+  buildAutomaticOnboardingPlan,
+  executeOnboardingChecks,
+  cancelOnboarding,
+  readOnboardingState,
+  markOnboardingRecorded,
   buildOnboardingCard,
   buildWorkspaceClonePlan,
   applyWorkspaceClone,
@@ -57,13 +73,26 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const defaultWorkspace = process.env.ARCHITECTURE_MANAGER_WORKSPACE || null;
+function preferences() {
+  const path = join(app.getPath('userData'), 'workspace-preferences.json');
+  try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return {}; }
+}
+function rememberWorkspace(root) {
+  const directory = app.getPath('userData'); mkdirSync(directory, { recursive: true });
+  writeFileSync(join(directory, 'workspace-preferences.json'), JSON.stringify({ lastWorkspace: root, recent: [root, ...(preferences().recent || []).filter((path) => path !== root)].slice(0, 8) }));
+}
 
 function registerIpc() {
+  const owned = async (input, operation) => {
+    const control = startOnboardingJob(input.workspaceRoot, input.platformId);
+    try { return await operation(control.registerCancel); } finally { control.finish(); }
+  };
+  ipcMain.handle('ui:version', () => app.getVersion());
   ipcMain.handle('ui:confirm', async (_event, message) => {
     const result = await dialog.showMessageBox({ type: 'question', title: '确认操作', message: String(message), buttons: ['取消', '确认'], defaultId: 0, cancelId: 0 });
     return result.response === 1;
   });
-  ipcMain.handle('workspace:default', () => defaultWorkspace);
+  ipcMain.handle('workspace:default', () => defaultWorkspace || (existsSync(preferences().lastWorkspace || '') ? preferences().lastWorkspace : null));
   ipcMain.handle('workspace:select', async () => {
     const result = await dialog.showOpenDialog({
       title: '选择架构工作区',
@@ -75,10 +104,10 @@ function registerIpc() {
     const result = await dialog.showOpenDialog({ title: '选择平台目录', properties: ['openDirectory'] });
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
-  ipcMain.handle('workspace:scan', (_event, root) => scanWorkspace(root));
+  ipcMain.handle('workspace:scan', (_event, root) => { const result = scanWorkspace(root); rememberWorkspace(result.workspaceRoot); return result; });
   ipcMain.handle('platform:inspect', (_event, input) => inspectPlatformDirectory(input.workspaceRoot, input.platformId, input.directoryRelative));
   ipcMain.handle('platform:connection', (_event, input) => inspectPlatformConnection(input));
-  ipcMain.handle('platform:check', (_event, input) => runPlatformCheck(input));
+  ipcMain.handle('platform:check', (event, input) => owned(input, (registerCancel) => runPlatformCheck({ ...input, registerCancel, onProgress: (progress) => event.sender.send('transaction:progress', progress) })));
   ipcMain.handle('plan:platform-view', (_event, input) => buildPlatformViewPlan(input));
   ipcMain.handle('plan:resource-pointer', (_event, input) => buildResourcePointerPlan(input));
   ipcMain.handle('catalog:read', (_event, input) => readCatalogEntry(input));
@@ -102,7 +131,7 @@ function registerIpc() {
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
   ipcMain.handle('software:open-location', async (_event, input) => {
-    const plan = buildSoftwareLaunchPlan({ workspaceRoot: input.workspaceRoot, softwareId: input.softwareId, mode: 'open-location' });
+    const plan = buildSoftwareLaunchPlan({ workspaceRoot: input.workspaceRoot, softwareId: input.softwareId, platformId: input.platformId, mode: 'open-location' });
     if (!plan.target.bodyPath || !existsSync(plan.target.bodyPath) || !statSync(plan.target.bodyPath).isDirectory()) throw new Error('SOFTWARE_BODY_PATH_NOT_FOUND');
     if (input.expectedPath !== plan.target.bodyPath) throw new Error('EXTERNAL_CHANGE_DETECTED');
     const error = await shell.openPath(plan.target.bodyPath);
@@ -133,13 +162,27 @@ function registerIpc() {
   ipcMain.handle('plan:platform-scaffold', (_event, input) => buildPlatformScaffoldPlan(input));
   ipcMain.handle('onboarding:config', (_event, input) => readOnboardingConfig(input));
   ipcMain.handle('plan:platform-configuration', (_event, input) => buildOnboardingConfigPlan(input));
+  ipcMain.handle('onboarding:runtime-detect', (_event, input) => detectRuntime(input));
+  ipcMain.handle('plan:platform-runtime', (_event, input) => buildOnboardingRuntimePlan(input));
+  ipcMain.handle('plan:platform-backend', (_event, input) => buildOnboardingBackendPlan(input));
+  ipcMain.handle('plan:platform-client', (_event, input) => buildOnboardingClientPlan(input));
+  ipcMain.handle('plan:platform-providers', (_event, input) => buildOnboardingProvidersPlan(input));
+  ipcMain.handle('onboarding:capability-probe', (event, input) => owned(input, (registerCancel) => probeOnboardingCapabilities(input, { registerCancel, onProgress: (progress) => event.sender.send('transaction:progress', progress) })));
+  ipcMain.handle('plan:platform-attestation', (_event, input) => buildOnboardingAttestationPlan(input));
+  ipcMain.handle('onboarding:client-probe', (_event, input) => probeOnboardingClient(input));
   ipcMain.handle('onboarding:select-file', async () => {
     const result = await dialog.showOpenDialog({ title: '选择解释器、客户端入口或配置文件', properties: ['openFile'] });
     return result.canceled ? null : result.filePaths[0];
   });
   ipcMain.handle('onboarding:draft', (_event, input) => governanceOnboardingDraft(input.workspaceRoot, input.platformId));
   ipcMain.handle('onboarding:card', (_event, input) => buildOnboardingCard(input.workspaceRoot, input.platformId));
-  ipcMain.handle('onboarding:pipeline', (_event, input) => runOnboardingPipeline(input));
+  ipcMain.handle('onboarding:pipeline', (event, input) => executeOnboardingChecks(input, { onProgress: (progress) => event.sender.send('transaction:progress', progress) }));
+  ipcMain.handle('onboarding:state', (_event, input) => readOnboardingState(input));
+  ipcMain.handle('onboarding:cancel', (_event, input) => cancelOnboarding(input));
+  ipcMain.handle('onboarding:recorded', (_event, input) => markOnboardingRecorded(input));
+  ipcMain.handle('plan:platform-governance', (_event, input) => buildOnboardingGovernancePlan(input));
+  ipcMain.handle('plan:platform-finalize', (_event, input) => buildOnboardingFinalizePlan(input));
+  ipcMain.handle('plan:platform-onboarding', (_event, input) => buildAutomaticOnboardingPlan(input));
   ipcMain.handle('plan:workspace-clone', (_event, input) => buildWorkspaceClonePlan(input));
   ipcMain.handle('workspace:clone', (_event, input) => applyWorkspaceClone({ plan: input.plan }, { actor: 'local-user', now: new Date().toISOString() }));
   ipcMain.handle('transaction:apply', (event, input) => applyPlan({ ...input, onProgress: (progress) => event.sender.send('transaction:progress', progress) }));

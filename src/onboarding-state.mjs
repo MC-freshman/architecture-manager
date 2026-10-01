@@ -1,0 +1,101 @@
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { atomicWrite } from './transactions/kernel.mjs';
+import { targetPath } from './core/paths.mjs';
+import { sha256 } from './core/hash.mjs';
+import { readOnboardingConfig } from './onboarding-config.mjs';
+import { clientBinding, probeOnboardingClient } from './onboarding-client.mjs';
+import { inspectPlatformConnection, runPlatformCheck } from './platform-check.mjs';
+import { execFileSync } from 'node:child_process';
+import { onboardingGitPaths } from './onboarding-governance.mjs';
+import { requestOnboardingCancellation } from './core/onboarding-jobs.mjs';
+
+const active = new Map();
+const keyOf = (root, id) => `${root.toLowerCase()}:${id}`;
+const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
+function pathOf(root, id) { return targetPath(root, `${id}/runtime/maintenance/manager-onboarding/state.json`); }
+export function readOnboardingState({ workspaceRoot, platformId }) {
+  readOnboardingConfig({ workspaceRoot, platformId });
+  const path = pathOf(workspaceRoot, platformId);
+  if (!existsSync(path)) return { schema: 'architecture-manager-onboarding/v1', platformId, status: 'not-started', steps: [], writePerformed: false };
+  const state = JSON.parse(readFileSync(path, 'utf8'));
+  if (state.status === 'running' && !active.has(keyOf(workspaceRoot, platformId))) state.status = 'interrupted';
+  return { ...state, writePerformed: false };
+}
+function save(root, id, value) { const path = pathOf(root, id); mkdirSync(join(path, '..'), { recursive: true }); atomicWrite(path, json(value), randomUUID()); }
+
+export function cancelOnboarding({ workspaceRoot, platformId }) {
+  const automaticCancelled = requestOnboardingCancellation(workspaceRoot, platformId);
+  const record = active.get(keyOf(workspaceRoot, platformId));
+  if (!record) return { status: automaticCancelled ? 'cancellation-requested' : 'not-running', writePerformed: false };
+  record.cancelled = true;
+  record.cancel?.();
+  return { status: 'cancellation-requested', writePerformed: false };
+}
+
+export async function executeOnboardingChecks({ workspaceRoot, platformId, only = null }, { onProgress = () => {}, check = runPlatformCheck, clientProbe = probeOnboardingClient } = {}) {
+  const key = keyOf(workspaceRoot, platformId);
+  if (active.has(key)) throw new Error('ONBOARDING_ALREADY_RUNNING');
+  const precheck = inspectPlatformConnection({ workspaceRoot, platformId });
+  if (!['configured', 'callable', 'complete', 'check-failed'].includes(precheck.stage)) throw new Error('ONBOARDING_CONFIGURATION_REQUIRED');
+  const binding = clientBinding(workspaceRoot, platformId);
+  const previous = readOnboardingState({ workspaceRoot, platformId });
+  if (previous.configSha256 && previous.configSha256 !== binding.configSha256 && ['running', 'interrupted'].includes(previous.status)) throw new Error('ONBOARDING_RESUME_DRIFT');
+  const reusable = previous.configSha256 === binding.configSha256 && previous.versionsSha256 === binding.versionsSha256 && previous.adapterSha256 === binding.adapterSha256 && previous.environmentBindingSha256 === environmentBinding(workspaceRoot, platformId);
+  const state = { schema: 'architecture-manager-onboarding/v1', platformId, executionId: reusable ? previous.executionId : randomUUID(), ...binding, status: 'running', startedAt: reusable ? previous.startedAt : new Date().toISOString(), steps: reusable ? (previous.steps || []).filter((step) => step.status === 'passed') : [], stoppedAt: null, writePerformed: true };
+  state.environmentBindingSha256 = environmentBinding(workspaceRoot, platformId);
+  const job = { cancelled: false, cancel: null }; active.set(key, job); save(workspaceRoot, platformId, state);
+  const step = async (name, operation, passed) => {
+    if (job.cancelled) throw new Error('ONBOARDING_CANCELLED');
+    const prior = state.steps.find((item) => item.step === name && item.status === 'passed');
+    if (prior?.evidencePath && existsSync(prior.evidencePath) && sha256(readFileSync(prior.evidencePath)) === prior.evidenceSha256) { onProgress({ platformId, phase: name, reused: true }); return prior.result; }
+    state.currentStep = name; save(workspaceRoot, platformId, state); onProgress({ platformId, phase: name, reused: false });
+    const result = await operation();
+    if (job.cancelled) throw new Error('ONBOARDING_CANCELLED');
+    const fresh = clientBinding(workspaceRoot, platformId);
+    if (JSON.stringify(fresh) !== JSON.stringify(binding) || environmentBinding(workspaceRoot, platformId) !== state.environmentBindingSha256) throw new Error('ONBOARDING_RESUME_DRIFT');
+    const valid = passed(result);
+    state.steps.push({ step: name, status: valid ? 'passed' : 'failed', result, evidencePath: result.evidencePath || null, evidenceSha256: result.evidencePath && existsSync(result.evidencePath) ? sha256(readFileSync(result.evidencePath)) : null }); save(workspaceRoot, platformId, state);
+    if (!valid) { state.stoppedAt = name; throw new Error('ONBOARDING_CHECK_FAILED'); }
+    return result;
+  };
+  try {
+    // This check is selected against the target config. Patches use only affected cells after initial certification.
+    await step(only ? 'affected-cells' : 'conform-and-first-matrix', () => check({ workspaceRoot, platformId, mode: only ? 'quick' : 'full', only, stopOnFloorFailure: true, onProgress, registerCancel: (cancel) => { job.cancel = cancel; } }), (result) => result.issues?.length === 0 && result.counts?.fail === 0 && !result.counts?.needsInput);
+    await step('client-tool-loop', () => clientProbe({ workspaceRoot, platformId }, { registerCancel: (cancel) => { job.cancel = cancel; } }), (result) => result.status === 'passed');
+    state.status = 'verified-awaiting-governance-git'; state.currentStep = 'governance-git';
+  } catch (error) {
+    state.status = job.cancelled ? 'cancelled' : 'failed'; state.error = String(error.message); state.stoppedAt ||= state.currentStep;
+  } finally { active.delete(key); state.updatedAt = new Date().toISOString(); save(workspaceRoot, platformId, state); }
+  return state;
+}
+
+function environmentBinding(root, id) {
+  const snapshot = readOnboardingConfig({ workspaceRoot: root, platformId: id });
+  const hashes = {};
+  for (const [name, path] of Object.entries({ capabilities: snapshot.config.capabilities, gateway: snapshot.config.softwareGatewayConfig, backend: snapshot.config.executionBackend, manifest: snapshot.config.environmentManifest })) hashes[name] = path && existsSync(path) ? sha256(readFileSync(path)) : null;
+  for (const repo of ['tool', 'agent', 'software']) {
+    const registryPath = targetPath(root, `${repo}/registry.json`);
+    if (!existsSync(registryPath)) { hashes[repo] = null; continue; }
+    hashes[repo] = sha256(readFileSync(registryPath));
+    const registry = JSON.parse(readFileSync(registryPath, 'utf8'));
+    for (const entries of Object.values(registry)) if (Array.isArray(entries)) for (const entry of entries) if (entry.id) {
+      const pointer = targetPath(root, `${repo}/${entry.current || `${entry.id}/current.json`}`);
+      if (existsSync(pointer)) hashes[`${repo}:${entry.id}`] = sha256(readFileSync(pointer));
+    }
+  }
+  return sha256(JSON.stringify(hashes));
+}
+
+export function markOnboardingRecorded({ workspaceRoot, platformId, gitReadback }) {
+  const state = readOnboardingState({ workspaceRoot, platformId }); const binding = clientBinding(workspaceRoot, platformId);
+  const paths = onboardingGitPaths(workspaceRoot, platformId);
+  const git = (args) => execFileSync('git', ['-C', workspaceRoot, ...args], { encoding: 'utf8', windowsHide: true, shell: false }).trim();
+  const head = git(['rev-parse', 'HEAD']);
+  const status = git(['status', '--porcelain', '--', ...paths]);
+  if (state.status !== 'verified-awaiting-governance-git' || state.configSha256 !== binding.configSha256 || state.versionsSha256 !== binding.versionsSha256 || status || !head) throw new Error('ONBOARDING_NOT_VERIFIED');
+  for (const path of paths) { git(['ls-files', '--error-unmatch', '--', path]); }
+  gitReadback = { head, configurationStatusClean: true, recordedAt: new Date().toISOString(), paths };
+  state.status = 'complete'; state.git = gitReadback; state.completedAt = new Date().toISOString(); save(workspaceRoot, platformId, state); return state;
+}

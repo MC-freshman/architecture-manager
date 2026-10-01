@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative, resolve, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
+import { runnerConfig } from './software-publish.mjs';
 
 const SOFTWARE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
@@ -113,10 +114,11 @@ export function healthSoftware(root, softwareId) {
   }
 }
 
-export function buildSoftwareLaunchPlan({ workspaceRoot, softwareId, mode = 'health', now = new Date().toISOString() }) {
+export function buildSoftwareLaunchPlan({ workspaceRoot, softwareId, platformId = null, mode = 'health', now = new Date().toISOString() }) {
   if (typeof softwareId !== 'string' || !SOFTWARE_ID.test(softwareId)) throw new Error('INVALID_SOFTWARE_ID');
   const software = readSoftware(workspaceRoot, softwareId);
   if (!software) throw new Error('SOFTWARE_NOT_REGISTERED');
+  if (platformId) { software.bodyPath = runnerConfig(resolve(workspaceRoot), platformId).value.bodies[softwareId] || null; software.bodyExists = software.bodyPath ? existsSync(software.bodyPath) : false; }
   const plan = {
     schema: 'architecture-manager-plan/v1',
     planId: `software-${mode}-${now.replace(/[^0-9]/g, '').slice(0, 17)}`,
@@ -125,7 +127,7 @@ export function buildSoftwareLaunchPlan({ workspaceRoot, softwareId, mode = 'hea
     generatedAt: now,
     applyMode: 'confirmation-required',
     writePerformed: false,
-    target: { softwareId, version: software.version, mode, bodyPath: software.bodyPath, endpoint: software.endpoint },
+    target: { softwareId, platformId, version: software.version, mode, bodyPath: software.bodyPath, endpoint: software.endpoint },
     steps: [],
     verification: ['re-read current pointer and recipe before dispatch', 'record provider, version, request and response hashes']
   };
@@ -137,7 +139,8 @@ export function buildSoftwareLaunchPlan({ workspaceRoot, softwareId, mode = 'hea
     plan.verification.push('no launch executor is registered in the manager; do not report a started process');
   } else if (mode === 'open-location') {
     if (!software.bodyPath) throw new Error('SOFTWARE_BODY_PATH_UNDECLARED');
-    plan.steps.push({ operation: 'open-software-location', path: software.bodyPath, sideEffects: 'opens-system-file-manager', consentRequired: true, dispatch: 'electron-shell' });
+    if (existsSync(software.bodyPath) && statSync(software.bodyPath).isFile()) plan.target.bodyPath = dirname(software.bodyPath);
+    plan.steps.push({ operation: 'open-software-location', path: plan.target.bodyPath, sideEffects: 'opens-system-file-manager', consentRequired: true, dispatch: 'electron-shell' });
     plan.verification.push('path must exist and remain the recipe-declared software body path');
   } else {
     throw new Error('INVALID_SOFTWARE_MODE');
