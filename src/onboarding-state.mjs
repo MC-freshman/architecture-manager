@@ -38,7 +38,7 @@ export async function executeOnboardingChecks({ workspaceRoot, platformId, only 
   const key = keyOf(workspaceRoot, platformId);
   if (active.has(key)) throw new Error('ONBOARDING_ALREADY_RUNNING');
   const precheck = inspectPlatformConnection({ workspaceRoot, platformId });
-  if (!['configured', 'callable', 'complete', 'check-failed'].includes(precheck.stage)) throw new Error('ONBOARDING_CONFIGURATION_REQUIRED');
+  if (!['configured', 'callable', 'complete', 'check-failed', 'check-cancelled'].includes(precheck.stage)) throw new Error('ONBOARDING_CONFIGURATION_REQUIRED');
   const binding = clientBinding(workspaceRoot, platformId);
   const previous = readOnboardingState({ workspaceRoot, platformId });
   const firstCertification = readFirstCertification(previous, workspaceRoot, platformId);

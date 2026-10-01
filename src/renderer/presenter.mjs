@@ -56,6 +56,7 @@ export function friendlyError(error) {
     ONBOARDING_NOT_VERIFIED: '检查、客户端回环或配置入库尚未完成，请先完成相应步骤。',
     GIT_UNRELATED_STAGED_FILES: 'Git 暂存区还有本轮之外的文件。请先处理它们，管理台不会将其混入接入提交。',
     ONBOARDING_CAPABILITY_PROBE_FAILED: '必要能力探针尚未通过，已停在当前步骤。请查看本平台的接入记录后修复并继续。',
+    ONBOARDING_CHECK_FAILED: '接入认证尚未通过。请打开平台的检查问题或接入记录查看具体原因；已通过的安装与配置步骤保留。',
     EXTERNAL_CHANGE_DETECTED: '目标文件已被其他程序修改，管理台已阻止覆盖，请重新扫描。',
     TOP_LEVEL_CONFIRMATION_REQUIRED: '顶层治理文件需要勾选确认后才能生成计划。',
     TARGET_VERSION_UNAVAILABLE: '目标版本不在当前共享仓目录中，请先确认版本已发布。',

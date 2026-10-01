@@ -109,7 +109,7 @@ export async function applyAutomaticOnboarding(plan, options = {}) {
       return apply(buildOnboardingAttestationPlan({ workspaceRoot, platformId, evidencePath: proof.evidencePath }), applyOnboardingAttestation);
     });
     await step('client', () => apply(buildOnboardingClientPlan({ workspaceRoot, platformId }), applyOnboardingClient));
-    await step('certification', async () => { const result = await executeOnboardingChecks({ workspaceRoot, platformId }, { onProgress: progress }); if (result.status !== 'verified-awaiting-governance-git') throw new Error(`ONBOARDING_CHECK_FAILED:${result.stoppedAt}`); return result; });
+    await step('certification', async () => { const result = await executeOnboardingChecks({ workspaceRoot, platformId }, { onProgress: progress }); if (result.status === 'cancelled') throw new Error('ONBOARDING_CANCELLED'); if (result.status !== 'verified-awaiting-governance-git') throw new Error(`ONBOARDING_CHECK_FAILED:${result.stoppedAt}`); return result; });
     await step('governance', () => apply(buildOnboardingGovernancePlan({ workspaceRoot, platformId }), applyOnboardingGovernance));
     await step('git', () => applyOnboardingFinalize(buildOnboardingFinalizePlan({ workspaceRoot, platformId, identity: inputs.fields.gitAuthorName || inputs.fields.gitAuthorEmail ? { name: inputs.fields.gitAuthorName, email: inputs.fields.gitAuthorEmail } : null }), options));
     journal.status = 'complete'; journal.completedAt = new Date().toISOString(); save();

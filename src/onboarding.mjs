@@ -206,7 +206,7 @@ export async function runOnboardingPipeline({ workspaceRoot, platformId, include
     precheck = { ok: false, error: String(error?.message ?? error) };
   }
   steps.push({ step: 'precheck', result: precheck });
-  if (!['configured', 'callable', 'complete', 'check-failed'].includes(precheck.stage)) return { platformId, steps, stoppedAt: 'precheck' };
+  if (!['configured', 'callable', 'complete', 'check-failed', 'check-cancelled'].includes(precheck.stage)) return { platformId, steps, stoppedAt: 'precheck' };
   const quick = await check({ workspaceRoot, platformId, mode: 'quick' });
   steps.push({ step: 'conform-quick', result: quick });
   if (quick.issues?.length > 0) return { platformId, steps, stoppedAt: 'conform-quick' };

@@ -92,7 +92,7 @@ export async function runPlatformCheck({ workspaceRoot, platformId, mode = 'quic
   if (!['quick', 'full'].includes(mode)) throw new Error('INVALID_PLATFORM_CHECK_MODE');
   const root = resolve(workspaceRoot);
   const pre = inspectPlatformConnection({ workspaceRoot: root, platformId });
-  if (!['configured', 'callable', 'complete', 'check-failed'].includes(pre.stage)) throw new Error(`PLATFORM_NOT_READY_FOR_CHECK:${pre.stage}`);
+  if (!['configured', 'callable', 'complete', 'check-failed', 'check-cancelled'].includes(pre.stage)) throw new Error(`PLATFORM_NOT_READY_FOR_CHECK:${pre.stage}`);
   const base = join(root, platformId, 'runtime', 'manager-check');
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const out = join(base, stamp);
@@ -139,7 +139,12 @@ export async function runPlatformCheck({ workspaceRoot, platformId, mode = 'quic
   onProgress({ platformId, phase: mode === 'quick' ? '检查受影响调用格' : `首次完整调用矩阵（${callableCount} 项）`, timeoutSeconds:matrixTimeout/1000, outputPath: out });
   const driver = runtimeFile('matrix_driver.py');
   const matrixResult = await command(driver, [matrix, ...matrixArgs], matrixTimeout);
-  if (matrixResult.cancelled) throw new Error('ONBOARDING_CANCELLED');
+  if (matrixResult.cancelled) {
+    onProgress({ platformId, phase: '停止本次矩阵的维护探针', outputPath: out });
+    const cleanup = await command(runtimeFile('matrix_cleanup.py'), [pre.configPath, out], 120000);
+    let cleanupReport = null; try { cleanupReport = readJson(join(out, 'cancel-cleanup.json')); } catch { /* Never infer safe cleanup from an empty report. */ }
+    return saveCheck(base, out, { schema: 'architecture-manager-platform-check/v1', platformId, mode, stage: 'check-cancelled', status: 'cancelled', bridgeSha256: pre.bridgeSha256, configSha256: pre.configSha256, conformPath, matrixPath: null, counts: { pass: 0, fail: 0, conform: initialFloor.counts }, gaps: reportGaps(initialFloor), issues: [cleanup.exitCode === 0 && cleanupReport?.ok ? '本次检查已取消，未完成的维护探针已停止；部分结果不作为接入成功证据。' : '本次检查已取消，但维护探针未全部安全停止，请查看清理报告。'], cleanupPath: join(out, 'cancel-cleanup.json'), commandErrors: cleanup.exitCode ? [cleanup.stderr.slice(0, 2000)] : [], checkedAt: new Date().toISOString(), evidenceFresh: true });
+  }
   let floor = null;
   let matrixReport = null;
   try { floor = readJson(conformPath); } catch { /* Failure is reported below. */ }
