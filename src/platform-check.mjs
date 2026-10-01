@@ -138,7 +138,7 @@ export async function runPlatformCheck({ workspaceRoot, platformId, mode = 'quic
   const callableCount = mode === 'full' ? ['tool', 'agent', 'software'].reduce((count, repo) => {
     const registry=readJson(join(root,repo,'registry.json'));
     const entries=registry[repo === 'tool' ? 'workflows' : repo === 'agent' ? 'agents' : 'software'] || [];
-    return count+entries.filter(entry=>entry.enabled === true && entry.invocable !== false).length;
+    return count+entries.filter(entry=>entry.enabled === true && (repo === 'software' || entry.invocable !== false)).length;
   },0) : 1;
   // First onboarding must finish the required inventory; a fixed 30-minute cap
   // can abort a valid large registry. This budget does not claim to improve speed.

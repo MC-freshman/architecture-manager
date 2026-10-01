@@ -33,7 +33,7 @@ export function patchCertificationSelection(proof, workspaceRoot, platformId, co
     const affected=new Set(['workflow:expert-task']);
     for(const [repo,section,kind] of [['tool','workflows','workflow'],['agent','agents','agent'],['software','software','software']]) {
       const registry=JSON.parse(readFileSync(targetPath(workspaceRoot,`${repo}/registry.json`),'utf8'));
-      for(const entry of registry[section] || []) if(entry.enabled && entry.invocable!==false) {
+      for(const entry of registry[section] || []) if(entry.enabled && (repo==='software' || entry.invocable!==false)) {
         const pointer=JSON.parse(readFileSync(targetPath(workspaceRoot,`${repo}/${entry.current}`),'utf8'));
         const key=`${kind}:${entry.id}`;if(prior.get(key)!==pointer.version) affected.add(key);
       }
