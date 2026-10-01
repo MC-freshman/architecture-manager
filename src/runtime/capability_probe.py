@@ -99,7 +99,7 @@ sys.exit(0 if all(value for key,value in checks.items() if key!="renderer") else
         parameters = ops.parameters_for(Path(config['toolRoot']), release, load(release / 'manifest.json'))
         run_id = 'manager-claim-' + str(time.time_ns())
         request = {'operation': 'prepare', 'runId': run_id, 'platform': config['platform'], 'parentRunId': None, 'target': {'mode': 'workflow', 'id': 'expert-task', 'version': version}, 'parameters': parameters, 'inputSources': []}
-        prepared, _ = ops.exchange(runner / 'cli.py', probe_config_path, request, root, 1)
+        prepared, _ = ops.exchange(runner / 'cli.py', probe_config_path, dict(request), root, 1)
         if not prepared.get('ok'): raise ValueError(str(prepared.get('error')))
         state_path = Path(load(probe_config_path)['runsRoot']) / run_id / 'state.json'
         state = load(state_path)
