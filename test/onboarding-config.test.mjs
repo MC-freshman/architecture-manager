@@ -33,6 +33,9 @@ test('a non-base platform is configured, discovered and checked without source e
     assert.equal(inspectPlatformConnection({ workspaceRoot: f.root, platformId: 'another-client' }).stage, 'configured');
     const capabilities = JSON.parse(readFileSync(join(f.root, 'another-client/bridge/capabilities.json')));
     assert.deepEqual(capabilities.checks, {}, 'generated declarations are not evidence');
+    const gateway = JSON.parse(readFileSync(join(f.root,'another-client/bridge/software-gateway-config.json')));
+    assert.equal(gateway.platformId, 'another-client');
+    assert.notEqual(gateway.platform, gateway.platformId, 'OS recipe selection must not use the architecture platform identifier');
   } finally { f.cleanup(); }
 });
 

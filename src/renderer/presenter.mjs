@@ -33,7 +33,7 @@ export function friendlyError(error) {
   const code = String(error?.message ?? error);
   const [key, ...details] = code.split(':');
   const hints = {
-    GIT_IDENTITY_REQUIRED: '请在接入向导的登记页填写 Git 提交姓名和邮箱，再保存配置并继续。这是提交署名，无需输入 GitHub 密码。',
+    GIT_IDENTITY_REQUIRED: '请在接入向导的登记页填写 Git 提交姓名和邮箱，再点击预览一键接入／继续。这是提交署名，无需输入 GitHub 密码。',
     ONBOARDING_CANCELLED: '本次检查已停止，所属进程树已回收。已保存的配置和证据保留，可从向导继续。',
     RAW_SECRET_NOT_ALLOWED: '配置中只能填写凭据引用，不能填写密码或令牌原值。',
     DOCUMENT_BASELINE_MISMATCH: '文档在读取后发生了变化，请重新打开文档再编辑。',

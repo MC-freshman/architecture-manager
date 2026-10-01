@@ -66,6 +66,7 @@ export function OnboardPanel({ api, workspace, inventory, busy = false, setPlanP
         <label className="onboarding-field"><span>显示名称</span><input value={fields.displayName || ''} onChange={(event) => field('displayName', event.target.value)} /></label>
         {selection === '__new__' && <label className="sensitive-confirm"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /> 允许在本工作区创建该平台一级目录</label>}
         <p className="muted">已有平台会保留原配置和运行锁；预览中列出本轮要修改的文件。</p>
+        {snapshot?.exists && <button className="small-button" disabled={working} onClick={() => { setFields(snapshot.fields); setResult({ status: '已读取当前生效配置；重新预览会保留已激活的环境，并核对新的版本与能力。' }); }}>按当前配置重新生成接入</button>}
       </>}
       {step === 1 && <>
         <p>目标：{platformId || '未选平台'}。三仓根路径自动取当前工作区。</p>

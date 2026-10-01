@@ -115,7 +115,7 @@ export function buildOnboardingConfigPlan({ workspaceRoot, platformId, fields = 
     { path: `${platformId}/bridge/client-adapter.json`, content: stringify(client) }
   ];
   if (existsSync(targetPath(root, `${platformId}/bridge/bridge.json`))) proposed.push({ path: `${platformId}/bridge/bridge.json`, content: stringify(bridge) });
-  if (!existsSync(config.softwareGatewayConfig)) proposed.push({ path: `${platformId}/bridge/software-gateway-config.json`, content: stringify({ schema: 'ai-software-gateway-config/v1', platform: platformId, softwareRoot: join(root, 'software'), lockRoot: join(root, platformId, 'runtime/software/locks'), evidenceRoot: join(root, platformId, 'runtime/software/evidence'), bodies: {}, interpreters: python ? { '.py': python } : {} }) });
+  if (!existsSync(config.softwareGatewayConfig)) proposed.push({ path: `${platformId}/bridge/software-gateway-config.json`, content: stringify({ schema: 'ai-software-gateway-config/v1', platformId, platform: process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'macos' : process.platform, softwareRoot: join(root, 'software'), lockRoot: join(root, platformId, 'runtime/software/locks'), evidenceRoot: join(root, platformId, 'runtime/software/evidence'), bodies: {}, interpreters: python ? { '.py': python } : {} }) });
   if (!existsSync(join(root, platformId, 'bridge/platform.md'))) proposed.push({ path: `${platformId}/bridge/platform.md`, content: `# ${bridge.displayName}\n\n平台 ID：${platformId}。管理台创建配置；接入状态以本平台的环境、能力、矩阵与客户端回环证据为准。\n` });
   const files = proposed.map((file) => {
     assertConfigurationReferences(file.path.endsWith('.json') ? JSON.parse(file.content) : {});
