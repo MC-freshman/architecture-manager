@@ -15,6 +15,10 @@ def save(path, value):
     Path(path).write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding='utf-8')
 
 
+def progress(phase):
+    print(json.dumps({'phase': phase}), flush=True)
+
+
 def run(argv, **kwargs):
     result = subprocess.run(argv, capture_output=True, text=True, encoding='utf-8', errors='replace', **kwargs)
     if result.returncode:
@@ -58,11 +62,13 @@ def main(path):
     requirements = base / 'requirements.lock.txt'
     requirements.write_text('\n'.join(spec['requirements']) + '\n', encoding='utf-8')
     host = base / 'host'
+    progress('创建本平台 Windows 环境并安装固定版本依赖')
     run([sys.executable, '-B', '-m', 'venv', '--copies', str(host)])
     host_python = host / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
     # Shared release requirements include scientific profiles, not only the runner's imports.
     run([str(host_python), '-B', '-m', 'pip', 'install', '--disable-pip-version-check', '-r', str(requirements)])
     wheels = base / 'wheels'
+    progress('按实际 Linux ABI 下载固定版本安装包')
     wheels.mkdir(exist_ok=True)
     libc = json.loads(guest([backend['interpreter'], '-B', '-c', 'import platform,json;print(json.dumps({"libc":platform.libc_ver(),"machine":platform.machine()}))']))
     if libc['libc'][0] != 'glibc' or libc['machine'] != 'x86_64':
@@ -71,6 +77,10 @@ def main(path):
     platforms = [part for number in range(minor, 4, -1) for part in ('--platform', 'manylinux_2_%s_x86_64' % number)] + ['--platform', 'manylinux2014_x86_64', '--platform', 'manylinux2010_x86_64']
     run([str(host_python), '-B', '-m', 'pip', 'download', '--disable-pip-version-check', '--only-binary=:all:'] + platforms + ['--python-version', '310', '--implementation', 'cp', '--abi', 'cp310', '-r', str(requirements), '--dest', str(wheels)])
     sealed = base / 'sealed'
+    progress('创建本平台隔离环境并离线安装依赖')
+    # A failed previous attempt already replaced these three venv aliases.
+    # Remove only aliases within this installation before venv copies its executable again.
+    guest([backend['interpreter'], '-B', '-c', 'import pathlib,sys;p=pathlib.Path(sys.argv[1]); names=("python","python3","python"+str(sys.version_info.major)+"."+str(sys.version_info.minor));[(f.unlink()) for name in names for f in [p/name] if f.is_symlink()]', linux(sealed / 'bin')])
     guest([backend['interpreter'], '-B', '-m', 'venv', '--without-pip', '--copies', linux(sealed)])
     guest([backend['interpreter'], '-B', '-c', 'import pathlib,sys;p=pathlib.Path(sys.argv[1]); target=pathlib.Path(sys.executable).resolve();[(f.unlink(missing_ok=True),f.symlink_to(target)) for f in (p/"python",p/"python3",p/("python"+str(sys.version_info.major)+"."+str(sys.version_info.minor)))]', linux(sealed / 'bin')])
     # An offline pip wheel avoids installing system apt packages or needing guest networking.
@@ -85,27 +95,37 @@ def main(path):
     if not manifest['files']:
         raise ValueError('empty environment')
     save(base / 'script-environment.json', manifest)
+    progress('复算隔离环境的逐文件哈希')
     verifier = Path(spec['runner']) / 'environment_verify.py'
     verification = json.loads(guest([backend['interpreter'], '-B', linux(verifier), linux(base / 'script-environment.json'), '-', linux(base / 'environment-verification.json')]))
     if verification.get('mismatches') != 0:
         raise ValueError('environment hash verification failed')
     backup = root / spec['backupRoot']
-    if backup.exists():
-        raise ValueError('backup destination exists')
-    backup.mkdir(parents=True)
+    progress('登记独立备份并执行真实恢复演练')
+    backup.mkdir(parents=True, exist_ok=True)
+    registration_path = backup / 'PREPARATION.json'
+    owner = {'platformId': spec['platformId'], 'installationId': spec['installationId'], 'installRoot': spec['installRoot'], 'backupRoot': spec['backupRoot'], 'containsCredentials': False}
+    if registration_path.exists() and json.loads(registration_path.read_text(encoding='utf-8')) != owner:
+        raise ValueError('backup ownership mismatch')
+    if not registration_path.exists() and any(file.name not in {'requirements.lock.txt','wheels','sealed-environment.zip'} for file in backup.iterdir()):
+        raise ValueError('unregistered backup directory')
+    save(registration_path, owner)
     shutil.copy2(requirements, backup / 'requirements.lock.txt')
-    shutil.copytree(wheels, backup / 'wheels')
+    shutil.copytree(wheels, backup / 'wheels', dirs_exist_ok=True)
     wheel_hashes = [{'path': f.name, 'sha256': hashlib.sha256(f.read_bytes()).hexdigest()} for f in sorted(wheels.iterdir())]
     archive = backup / 'sealed-environment.zip'
+    link_paths = {row['path'] for row in manifest['links']}
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as output:
-        for file in sorted(sealed.rglob('*')):
-            if file.is_file() and not file.is_symlink():
-                output.write(file, file.relative_to(sealed).as_posix())
+        for row in manifest['files']:
+            relative = row['path'][len(linux(sealed)) + 1:]
+            if relative not in link_paths:
+                output.write(sealed.joinpath(*relative.split('/')), relative)
     # Restore from the backup archive, compare every byte, then use its real interpreter.
-    restored = base / 'restore-drill'
-    guest([backend['interpreter'], '-B', '-c', 'import zipfile,sys,pathlib,os; p=pathlib.Path(sys.argv[2]);zipfile.ZipFile(sys.argv[1]).extractall(p);[(f.chmod(f.stat().st_mode|0o111)) for f in (p/"bin").iterdir() if f.is_file()]', linux(archive), linux(restored)])
+    attempt = uuid.uuid4().hex
+    restored = base / ('restore-drill-' + attempt)
+    guest([backend['interpreter'], '-B', '-c', 'import zipfile,sys,pathlib,os; p=pathlib.Path(sys.argv[2]);zipfile.ZipFile(sys.argv[1]).extractall(p);[(f.chmod(f.stat().st_mode|0o111)) for f in (p/"bin").iterdir() if f.is_file() and not f.is_symlink()]', linux(archive), linux(restored)])
     save(backup / 'links.json', manifest['links'])
-    guest([backend['interpreter'], '-B', '-c', 'import pathlib,sys,json;p=pathlib.Path(sys.argv[1]);[(p.joinpath(r["path"]).symlink_to(r["target"])) for r in json.load(open(sys.argv[2]))]', linux(restored), linux(backup / 'links.json')])
+    guest([backend['interpreter'], '-B', '-c', 'import pathlib,sys,json;p=pathlib.Path(sys.argv[1]);[(f.unlink(missing_ok=True),f.symlink_to(r["target"])) for r in json.load(open(sys.argv[2])) for f in [p.joinpath(r["path"])]]', linux(restored), linux(backup / 'links.json')])
     restored_inventory = json.loads(guest([linux(restored / 'bin/python'), '-B', '-c', inventory_code, linux(restored)]))
     expected = {f['path'][len(linux(sealed)):]: f['sha256'] for f in manifest['files']}
     actual = {f['path'][len(linux(restored)):]: f['sha256'] for f in restored_inventory['files']}
@@ -117,7 +137,7 @@ def main(path):
     with zipfile.ZipFile(host_archive, 'w', zipfile.ZIP_DEFLATED) as output:
         for row in host_files:
             output.write(host / row['path'], row['path'])
-    host_restored = base / 'host-restore-drill'
+    host_restored = base / ('host-restore-drill-' + attempt)
     with zipfile.ZipFile(host_archive) as archive_input:
         archive_input.extractall(host_restored)
     if any(hashlib.sha256((host_restored / r['path']).read_bytes()).hexdigest() != r['sha256'] for r in host_files):
@@ -125,11 +145,15 @@ def main(path):
     run([str(host_restored / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')), '-B', '-c', 'import jsonschema,yaml,numpy;print("host restore imports pass")'])
     save(backup / 'HOST-REBUILD.json', {'platformId': spec['platformId'], 'containsCredentials': False, 'archive': str(host_archive), 'archiveSha256': hashlib.sha256(host_archive.read_bytes()).hexdigest(), 'files': host_files, 'restoreVerified': True, 'rebuildCommand': [sys.executable, '-B', '-m', 'venv', '--copies', str(host)], 'installCommand': [str(host_python), '-B', '-m', 'pip', 'install', '-r', str(backup / 'requirements.lock.txt')]})
     shutil.copy2(Path(__file__).with_name('restore_env.py'), backup / 'restore.py')
-    restore_registration = {'schema': 'manager-environment-restore/v1', 'platformId': spec['platformId'], 'platformRoot': str(root / spec['platformId']), 'backend': backend, 'sealedArchiveLinux': linux(archive), 'sealedArchiveSha256': hashlib.sha256(archive.read_bytes()).hexdigest(), 'hostArchiveSha256': hashlib.sha256(host_archive.read_bytes()).hexdigest(), 'links': manifest['links'], 'allowedSystemInterpreters': sorted(set(link['target'] for link in manifest['links'])), 'sealedFiles': [{'path': row['path'][len(linux(sealed)) + 1:], 'sha256': row['sha256']} for row in manifest['files']], 'hostFiles': host_files, 'containsCredentials': False, 'command': [sys.executable, '-B', str(backup / 'restore.py'), str(backup / 'RESTORE.json'), str(base / 'registered-restore-drill')]}
+    restore_registration = {'schema': 'manager-environment-restore/v1', 'platformId': spec['platformId'], 'platformRoot': str(root / spec['platformId']), 'backend': backend, 'sealedArchiveLinux': linux(archive), 'sealedArchiveSha256': hashlib.sha256(archive.read_bytes()).hexdigest(), 'hostArchiveSha256': hashlib.sha256(host_archive.read_bytes()).hexdigest(), 'links': manifest['links'], 'allowedSystemInterpreters': sorted(set(link['target'] for link in manifest['links'])), 'sealedFiles': [{'path': row['path'][len(linux(sealed)) + 1:], 'sha256': row['sha256']} for row in manifest['files']], 'hostFiles': host_files, 'containsCredentials': False, 'command': [sys.executable, '-B', str(backup / 'restore.py'), str(backup / 'RESTORE.json'), str(base / ('registered-restore-drill-' + attempt))]}
     save(backup / 'RESTORE.json', restore_registration)
-    run(restore_registration['command'])
+    restored_result = json.loads(run(restore_registration['command']).splitlines()[-1])
+    if not all(restored_result.get(key) is True for key in ('hostRestored', 'sealedRestored', 'hashesMatch')):
+        raise ValueError('registered restoration did not pass')
+    save(backup / 'RESTORE-VERIFIED.json', {'installationId': spec['installationId'], 'registrationSha256': hashlib.sha256((backup / 'RESTORE.json').read_bytes()).hexdigest(), 'result': restored_result, 'command': restore_registration['command']})
     save(backup / 'REBUILD.json', {'schema': 'platform-environment-rebuild/v1', 'platformId': spec['platformId'], 'containsCredentials': False, 'requirements': spec['requirements'], 'wheels': wheel_hashes, 'archive': {'path': str(archive), 'sha256': hashlib.sha256(archive.read_bytes()).hexdigest()}, 'environmentFiles': manifest['files'], 'command': [backend['wslExecutable'], '-d', backend['distro'], '--exec', backend['interpreter'], '-B', '-m', 'zipfile', '-e', linux(archive), linux(sealed)], 'restoreDrill': {'hashesMatch': True, 'importsPassed': True, 'path': str(restored)}})
     save(base / 'result.json', {'ok': True, 'environmentVerified': True, 'restoreVerified': True, 'hostPython': str(host_python), 'environmentManifest': str(base / 'script-environment.json'), 'backupPath': str(backup), 'listedFiles': len(manifest['files']), 'verification': verification})
+    progress('本平台环境及备份恢复已通过，准备激活配置')
 
 
 if __name__ == '__main__':

@@ -119,7 +119,12 @@ export async function applyOnboardingRuntime(plan, { onProgress = () => {}, regi
   const spec = join(base, 'provision.json'); atomicWrite(spec, json(specification), transactionId);
   onProgress({ phase: '准备平台环境', platformId: plan.target.platformId, completed: 0, total: 4 });
   try {
-    const processResult = await runOwnedProcess({ python: plan.target.python, args: ['-B', helper, spec], cwd: base, timeout: 1800000, registerCancel, env: { ...process.env, PIP_CACHE_DIR: join(base, 'pip-cache'), TEMP: base, TMP: base } });
+    let outputLines = '';
+    const processResult = await runOwnedProcess({ python: plan.target.python, args: ['-B', helper, spec], cwd: base, timeout: 1800000, registerCancel, env: { ...process.env, PIP_CACHE_DIR: join(base, 'pip-cache'), TEMP: base, TMP: base }, onOutput: (chunk) => {
+      outputLines += chunk;
+      const lines = outputLines.split('\n'); outputLines = lines.pop();
+      for (const line of lines) { try { const progress = JSON.parse(line); if (typeof progress.phase === 'string') onProgress({ platformId: plan.target.platformId, phase: progress.phase }); } catch { /* Program output is not an instruction. */ } }
+    } });
     if (processResult.cancelled) throw new Error('ONBOARDING_CANCELLED');
     if (processResult.exitCode !== 0) throw new Error('RUNTIME_PREPARATION_FAILED');
     const result = load(join(base, 'result.json'));

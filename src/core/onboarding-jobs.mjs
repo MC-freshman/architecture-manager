@@ -1,5 +1,6 @@
+import { resolve } from 'node:path';
 const jobs = new Map();
-const key = (root, id) => `${root.toLowerCase()}:${id}`;
+const key = (root, id) => `${resolve(root).toLowerCase()}:${id}`;
 export function startOnboardingJob(root, id) {
   const identity = key(root, id);
   if (jobs.has(identity)) throw new Error('ONBOARDING_ALREADY_RUNNING');

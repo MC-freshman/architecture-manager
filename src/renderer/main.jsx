@@ -466,6 +466,10 @@ function App() {
     setTransactionProgress(null);
     try {
       const applied = await api.applyPlan({ plan: planPreview, afterText: planPayload?.afterText, actor: 'local-user' });
+      if (planPreview.kind === 'platform-onboarding' && applied.status !== 'complete') {
+        setMessage(`接入已停止在 ${applied.stoppedAt || applied.currentStep || '未完成步骤'}：${friendlyError(new Error(applied.error || '检查未通过'))}。修正后可点击“预览一键接入／继续”，已通过步骤保留。`);
+        return;
+      }
       const verification = await api.verifyPlan({ plan: planPreview });
       const refreshed = await api.scanWorkspace(workspace);
       setInventory(refreshed);

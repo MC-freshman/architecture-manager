@@ -38,11 +38,13 @@ export function buildWorkspaceClonePlan({ workspaceRoot = null, remote, destinat
 
 export function applyWorkspaceClone({ plan }, { actor = 'local-user', auditRoot = defaultAuditRoot(), now = new Date().toISOString() } = {}) {
   requirePlan(plan);
+  if (plan.kind !== 'workspace-clone' || resolve(plan.workspaceRoot) !== resolve(plan.target.destination) || plan.steps?.[0]?.remote !== plan.target.remote || resolve(plan.steps?.[0]?.destination || '') !== resolve(plan.target.destination)) throw new Error('PLAN_PAYLOAD_MISMATCH');
+  if (!isEmptyDirectory(plan.target.destination)) throw new Error('CLONE_DESTINATION_NOT_EMPTY');
   const destination = plan.target.destination;
   const id = makeId(plan, now);
   const createdHere = !existsSync(destination);
   try {
-    execFileSync('git', ['clone', plan.target.remote, destination], { encoding: 'utf8', timeout: 600000, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024 });
+    execFileSync('git', ['-c', 'core.longpaths=true', 'clone', '--no-hardlinks', '-c', 'core.longpaths=true', plan.target.remote, destination], { encoding: 'utf8', timeout: 600000, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024 });
     const head = execFileSync('git', ['-C', destination, 'rev-parse', 'HEAD'], { encoding: 'utf8', windowsHide: true }).trim();
     const missing = ARCHITECTURE_MARKERS.filter((marker) => !existsSync(join(destination, marker)));
     if (missing.length > 0) throw Object.assign(new Error(`GIT_CLONE_NOT_ARCHITECTURE:${missing.join(',')}`), { missing });

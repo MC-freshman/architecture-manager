@@ -33,7 +33,7 @@ export function buildOnboardingAttestationPlan({ workspaceRoot, platformId, evid
   const path = `${platformId}/bridge/capabilities.json`; const capabilities = load(targetPath(workspaceRoot, path));
   capabilities.checks = { ...capabilities.checks }; capabilities.descriptor ||= { schema: 'ai-platform-descriptor/v2', platformId, protocols: ['ai-run-protocol/v1.1', 'ai-run-protocol/v1.2', 'ai-run-protocol/v1.3'], operations: ['prepare', 'next', 'submit', 'status', 'stop'], recovery: ['replay'], actions: {}, profiles: {} };
   capabilities.descriptor.actions ||= {}; capabilities.descriptor.profiles ||= {}; capabilities.declaredAbsent ||= {}; capabilities.gapPlan ||= {};
-  for (const [action, key] of [['prompt', 'prompt-stage-claim'], ['script', 'script-environment-isolation-jail'], ['peer', 'peerDispatch']]) {
+  for (const [action, key] of [['prompt', 'prompt-stage-claim'], ['script', 'script-environment-isolation-jail'], ['peer', 'peerDispatch'], ['software-call', 'software-call']]) {
     if (proof.checks[key] === true) { capabilities.checks[key] = true; capabilities.descriptor.actions[action] = { supported: true, enforcement: action === 'script' ? 'kernel' : 'mediated', evidencePath, evidenceSha256: sha256(readFileSync(evidencePath)) }; delete capabilities.declaredAbsent[`action:${action}`]; }
     else capabilities.gapPlan[`action:${action}`] = { path: '回到接入向导修复运行环境或 provider 后重新运行能力探针', costMinutes: 30 };
   }

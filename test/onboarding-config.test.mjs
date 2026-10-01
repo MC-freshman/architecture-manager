@@ -3,7 +3,8 @@ import test from 'node:test';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { buildOnboardingConfigPlan, applyOnboardingConfig, verifyOnboardingConfig } from '../src/onboarding-config.mjs';
+import { buildOnboardingConfigPlan, applyOnboardingConfig, verifyOnboardingConfig, readOnboardingConfig } from '../src/onboarding-config.mjs';
+import { sha256 } from '../src/core/hash.mjs';
 import { allPlatformIds } from '../src/core/platforms.mjs';
 import { inspectPlatformConnection } from '../src/platform-check.mjs';
 
@@ -61,5 +62,19 @@ test('changed baselines, raw credentials and another platform environment are re
     assert.throws(() => buildOnboardingConfigPlan({ workspaceRoot: f.root, platformId: 'another-client', fields: { apiKey: 'do-not-store' } }), /RAW_SECRET/);
     assert.throws(() => buildOnboardingConfigPlan({ workspaceRoot: f.root, platformId: 'another-client', fields: { environmentManifest: join(f.root, 'codex/runtime/environment.json') } }), /PATH_MISMATCH/);
     assert.throws(() => buildOnboardingConfigPlan({ workspaceRoot: f.root, platformId: 'software', confirmed: true }), /INVALID_PLATFORM_ID/);
+  } finally { f.cleanup(); }
+});
+
+test('re-entry restores only persisted inputs whose original content hash still matches', () => {
+  const f = fixture();
+  try {
+    applyOnboardingConfig(buildOnboardingConfigPlan({ workspaceRoot: f.root, platformId: 'another-client', confirmed: true }), { auditRoot: f.auditRoot });
+    const inputs = { fields: { displayName: 'Recover' }, bodies: { app: 'selected-program' }, backendFields: { distro: 'selected-backend' }, interpreterAliases: {}, confirmed: true };
+    const record = { status: 'failed', stoppedAt: 'environment', inputs, inputsSha256: sha256(`${JSON.stringify(inputs, null, 2)}\n`) };
+    const path = 'another-client/runtime/maintenance/manager-onboarding/automatic.json';
+    f.put(path, JSON.stringify(record));
+    assert.deepEqual(readOnboardingConfig({ workspaceRoot: f.root, platformId: 'another-client' }).pendingAutomatic.inputs, inputs);
+    record.inputs.bodies.app = 'changed-without-a-plan'; f.put(path, JSON.stringify(record));
+    assert.equal(readOnboardingConfig({ workspaceRoot: f.root, platformId: 'another-client' }).pendingAutomatic, null);
   } finally { f.cleanup(); }
 });

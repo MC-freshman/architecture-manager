@@ -10,6 +10,8 @@ import { isRegisteredPlatform } from './core/platforms.mjs';
 import { runOwnedProcess } from './core/owned-process.mjs';
 import { fileURLToPath } from 'node:url';
 import { runtimeFile } from './core/runtime-path.mjs';
+import { clientBinding } from './onboarding-client.mjs';
+import { environmentBinding } from './onboarding-state.mjs';
 
 function fail(stage, issues, extra = {}) { return { schema: 'architecture-manager-platform-check/v1', stage, issues, ...extra, writePerformed: false }; }
 function reportGaps(report) {
@@ -45,6 +47,13 @@ export function inspectPlatformConnection({ workspaceRoot, platformId }) {
   const runnerPath = resolve(config.runner || '');
   if (!inside(join(root, 'tool', 'wf-runner', 'versions'), runnerPath) || !existsSync(join(runnerPath, 'cli.py'))) return fail('adapter-required', ['runner 版本入口不存在'], { ...common, configPath });
   const configSha256 = sha256(readFileSync(configPath));
+  const statePath = join(platformRoot, 'runtime/maintenance/manager-onboarding/state.json');
+  if (existsSync(statePath)) {
+    try {
+      const state = readJson(statePath); const binding = clientBinding(root, platformId);
+      if (state.status === 'complete' && state.configSha256 === configSha256 && state.versionsSha256 === binding.versionsSha256 && state.adapterSha256 === binding.adapterSha256 && state.environmentBindingSha256 === environmentBinding(root, platformId)) return fail('complete', [], { ...common, configPath, configSha256, evidencePath: statePath, counts: state.firstCertification?.counts, checkedAt: state.completedAt, evidenceFresh: false });
+    } catch { /* Incomplete records cannot certify a platform. */ }
+  }
   const previousPath = join(platformRoot, 'runtime', 'manager-check', 'latest.json');
   if (existsSync(previousPath)) {
     try {

@@ -45,7 +45,9 @@ export function readOnboardingConfig({ workspaceRoot, platformId }) {
   const ctx = context(workspaceRoot, platformId);
   const versions = Object.fromEntries(['wf-runner', 'runtime-contracts', 'repo-lint'].map((id) => [id, release(ctx.root, 'tool', id)]));
   const client = read(targetPath(ctx.root, `${platformId}/bridge/client-adapter.json`));
-  return { platformId, exists: existsSync(join(ctx.root, platformId)), configPath: ctx.configPath, config: ctx.config, versions, client, fields: {
+  const automatic = read(targetPath(ctx.root, `${platformId}/runtime/maintenance/manager-onboarding/automatic.json`), null);
+  const pendingAutomatic = automatic && automatic.status !== 'complete' && automatic.inputs && sha256(stringify(automatic.inputs)) === automatic.inputsSha256 ? { status: automatic.status, stoppedAt: automatic.stoppedAt, inputs: automatic.inputs } : null;
+  return { platformId, exists: existsSync(join(ctx.root, platformId)), configPath: ctx.configPath, config: ctx.config, versions, client, pendingAutomatic, fields: {
     displayName: ctx.bridge.displayName || platformId,
     pythonExecutable: ctx.bridge.runner?.python || ctx.config.interpreters?.['.py'] || '',
     environmentManifest: ctx.config.environmentManifest || '', scriptEnvironment: ctx.config.scriptEnvironment || '', executionBackend: ctx.config.executionBackend || (existsSync(join(ctx.root, platformId, 'bridge/backends/manager-sealed.json')) ? join(ctx.root, platformId, 'bridge/backends/manager-sealed.json') : ''),
@@ -53,6 +55,7 @@ export function readOnboardingConfig({ workspaceRoot, platformId }) {
     softwareGateway: ctx.config.softwareGateway?.replaceAll('\\', '/').includes('/_connector/versions/') ? ctx.config.softwareGateway : join(release(ctx.root, 'software', '_connector').path, 'connector.py'), softwareEnvironment: ctx.config.softwareEnvironment || '',
     clientKind: client.kind || 'cli', clientExecutable: client.executable || '', clientArgs: client.args || [],
     probeTool: client.probeTool || '', probeArguments: client.probeArguments || {},
+    gitAuthorName: ctx.config.commitIdentity?.name || '', gitAuthorEmail: ctx.config.commitIdentity?.email || '',
     runnerVersion: null, contractsVersion: null, scannerVersion: null
   }, writePerformed: false };
 }
@@ -77,6 +80,7 @@ export function buildOnboardingConfigPlan({ workspaceRoot, platformId, fields = 
   if (!existsSync(join(runner.path, 'cli.py')) || !existsSync(join(contracts.path, 'contracts/runtime/validate_contracts.py')) || !existsSync(join(scanner.path, 'scripts/repo_lint.py'))) throw new Error('ONBOARDING_RELEASE_ENTRY_MISSING');
   const config = { ...ctx.config, platform: platformId, platformRoot: join(root, platformId), toolRoot: join(root, 'tool'), agentRoot: join(root, 'agent'), softwareRoot: join(root, 'software'), runsRoot: join(root, platformId, 'runtime/runs'), runner: runner.path, contracts: contracts.path, scannerRelease: scanner.path, bridge: join(root, platformId, 'bridge.json'), capabilities: join(root, platformId, 'bridge/capabilities.json'), softwareRuntimeRoot: join(root, platformId, 'runtime/software'), projectWriteRoots: ctx.config.projectWriteRoots || [join(root, platformId, 'workspaces')], inputRoots: ctx.config.inputRoots || [join(root, platformId, 'workspaces')] };
   delete config.pendingKeys;
+  if (fields.gitAuthorName || fields.gitAuthorEmail) config.commitIdentity = { name: fields.gitAuthorName || '', email: fields.gitAuthorEmail || '' };
   for (const key of ['environmentManifest', 'scriptEnvironment', 'executionBackend', 'peerDispatcherModule', 'peerContentRoot', 'softwareEnvironment']) {
     if (key in fields) {
       const path = ownPath(root, platformId, fields[key]);

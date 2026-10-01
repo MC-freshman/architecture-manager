@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { atomicWrite } from './transactions/kernel.mjs';
 import { targetPath } from './core/paths.mjs';
@@ -12,7 +12,7 @@ import { onboardingGitPaths } from './onboarding-governance.mjs';
 import { requestOnboardingCancellation } from './core/onboarding-jobs.mjs';
 
 const active = new Map();
-const keyOf = (root, id) => `${root.toLowerCase()}:${id}`;
+const keyOf = (root, id) => `${resolve(root).toLowerCase()}:${id}`;
 const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
 function pathOf(root, id) { return targetPath(root, `${id}/runtime/maintenance/manager-onboarding/state.json`); }
 export function readOnboardingState({ workspaceRoot, platformId }) {
@@ -41,10 +41,13 @@ export async function executeOnboardingChecks({ workspaceRoot, platformId, only 
   if (!['configured', 'callable', 'complete', 'check-failed'].includes(precheck.stage)) throw new Error('ONBOARDING_CONFIGURATION_REQUIRED');
   const binding = clientBinding(workspaceRoot, platformId);
   const previous = readOnboardingState({ workspaceRoot, platformId });
+  const firstCertification = readFirstCertification(previous, workspaceRoot, platformId);
+  if (!only && firstCertification?.versionsSha256 === binding.versionsSha256) only = 'expert-task';
   if (previous.configSha256 && previous.configSha256 !== binding.configSha256 && ['running', 'interrupted'].includes(previous.status)) throw new Error('ONBOARDING_RESUME_DRIFT');
   const reusable = previous.configSha256 === binding.configSha256 && previous.versionsSha256 === binding.versionsSha256 && previous.adapterSha256 === binding.adapterSha256 && previous.environmentBindingSha256 === environmentBinding(workspaceRoot, platformId);
   const state = { schema: 'architecture-manager-onboarding/v1', platformId, executionId: reusable ? previous.executionId : randomUUID(), ...binding, status: 'running', startedAt: reusable ? previous.startedAt : new Date().toISOString(), steps: reusable ? (previous.steps || []).filter((step) => step.status === 'passed') : [], stoppedAt: null, writePerformed: true };
   state.environmentBindingSha256 = environmentBinding(workspaceRoot, platformId);
+  state.firstCertification = firstCertification;
   const job = { cancelled: false, cancel: null }; active.set(key, job); save(workspaceRoot, platformId, state);
   const step = async (name, operation, passed) => {
     if (job.cancelled) throw new Error('ONBOARDING_CANCELLED');
@@ -62,7 +65,8 @@ export async function executeOnboardingChecks({ workspaceRoot, platformId, only 
   };
   try {
     // This check is selected against the target config. Patches use only affected cells after initial certification.
-    await step(only ? 'affected-cells' : 'conform-and-first-matrix', () => check({ workspaceRoot, platformId, mode: only ? 'quick' : 'full', only, stopOnFloorFailure: true, onProgress, registerCancel: (cancel) => { job.cancel = cancel; } }), (result) => result.issues?.length === 0 && result.counts?.fail === 0 && !result.counts?.needsInput);
+    const checked = await step(only ? 'affected-cells' : 'conform-and-first-matrix', () => check({ workspaceRoot, platformId, mode: only ? 'quick' : 'full', only, stopOnFloorFailure: true, onProgress, registerCancel: (cancel) => { job.cancel = cancel; } }), (result) => result.issues?.length === 0 && result.counts?.fail === 0 && !result.counts?.needsInput);
+    if (!only) state.firstCertification = readFirstCertification({ ...state, steps: [{ status: 'passed', step: 'conform-and-first-matrix', result: checked }] }, workspaceRoot, platformId);
     await step('client-tool-loop', () => clientProbe({ workspaceRoot, platformId }, { registerCancel: (cancel) => { job.cancel = cancel; } }), (result) => result.status === 'passed');
     state.status = 'verified-awaiting-governance-git'; state.currentStep = 'governance-git';
   } catch (error) {
@@ -71,7 +75,21 @@ export async function executeOnboardingChecks({ workspaceRoot, platformId, only 
   return state;
 }
 
-function environmentBinding(root, id) {
+function readFirstCertification(previous, root, id) {
+  const validPath = (path) => path && path.replaceAll('\\', '/').toLowerCase().startsWith(targetPath(root, `${id}/runtime/manager-check`).replaceAll('\\', '/').toLowerCase() + '/') && existsSync(path);
+  if (previous.firstCertification) {
+    const proof = previous.firstCertification;
+    if (['matrix', 'conform'].every((name) => validPath(proof[`${name}Path`]) && sha256(readFileSync(proof[`${name}Path`])) === proof[`${name}Sha256`])) return proof;
+    return null;
+  }
+  const old = previous.steps?.find((step) => step.step === 'conform-and-first-matrix' && step.status === 'passed')?.result;
+  if (!old || old.platformId !== id || !validPath(old.matrixPath) || !validPath(old.conformPath)) return null;
+  const matrix = JSON.parse(readFileSync(old.matrixPath, 'utf8')); const floor = JSON.parse(readFileSync(old.conformPath, 'utf8'));
+  if (!matrix.rows?.length || matrix.rows.some((row) => ['FAIL', 'NEEDS-INPUT'].includes(row.status)) || !floor.floorReached || matrix.summary?.PASS !== old.counts.pass) return null;
+  return { versionsSha256: previous.versionsSha256, checkedAt: old.checkedAt, configSha256: old.configSha256, matrixPath: old.matrixPath, matrixSha256: sha256(readFileSync(old.matrixPath)), conformPath: old.conformPath, conformSha256: sha256(readFileSync(old.conformPath)), counts: old.counts, migratedFromStoredStep: !old.evidencePath || old.evidencePath.endsWith('latest.json') };
+}
+
+export function environmentBinding(root, id) {
   const snapshot = readOnboardingConfig({ workspaceRoot: root, platformId: id });
   const hashes = {};
   for (const [name, path] of Object.entries({ capabilities: snapshot.config.capabilities, gateway: snapshot.config.softwareGatewayConfig, backend: snapshot.config.executionBackend, manifest: snapshot.config.environmentManifest })) hashes[name] = path && existsSync(path) ? sha256(readFileSync(path)) : null;
@@ -94,7 +112,7 @@ export function markOnboardingRecorded({ workspaceRoot, platformId, gitReadback 
   const git = (args) => execFileSync('git', ['-C', workspaceRoot, ...args], { encoding: 'utf8', windowsHide: true, shell: false }).trim();
   const head = git(['rev-parse', 'HEAD']);
   const status = git(['status', '--porcelain', '--', ...paths]);
-  if (state.status !== 'verified-awaiting-governance-git' || state.configSha256 !== binding.configSha256 || state.versionsSha256 !== binding.versionsSha256 || status || !head) throw new Error('ONBOARDING_NOT_VERIFIED');
+  if (state.status !== 'verified-awaiting-governance-git' || state.configSha256 !== binding.configSha256 || state.versionsSha256 !== binding.versionsSha256 || state.adapterSha256 !== binding.adapterSha256 || state.environmentBindingSha256 !== environmentBinding(workspaceRoot, platformId) || !state.firstCertification || status || !head) throw new Error('ONBOARDING_NOT_VERIFIED');
   for (const path of paths) { git(['ls-files', '--error-unmatch', '--', path]); }
   gitReadback = { head, configurationStatusClean: true, recordedAt: new Date().toISOString(), paths };
   state.status = 'complete'; state.git = gitReadback; state.completedAt = new Date().toISOString(); save(workspaceRoot, platformId, state); return state;

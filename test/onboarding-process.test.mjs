@@ -50,3 +50,24 @@ test('cancel owns the real Windows descendant tree', platform, async () => {
     assert.equal(readFileSync(heartbeat, 'utf8'), stoppedAt, 'no descendant remains updating its output');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('cancel owns Linux descendants started through the selected WSL backend', { skip: process.platform !== 'win32' || !process.env.ARCHITECTURE_MANAGER_TEST_WSL }, async () => {
+  const root = mkdtempSync(join(tmpdir(), 'manager-guest-tree-'));
+  const heartbeat = join(root, 'heartbeat');
+  const backend = { wslExecutable: join(process.env.SystemRoot, 'System32/wsl.exe'), distro: process.env.ARCHITECTURE_MANAGER_TEST_WSL, interpreter: '/usr/bin/python3', pathMap: [{ windows: `${root[0]}:/`, linux: `/mnt/${root[0].toLowerCase()}/` }] };
+  const linuxHeartbeat = '/mnt/' + heartbeat[0].toLowerCase() + heartbeat.slice(2).replaceAll('\\', '/');
+  const child = 'import pathlib,time; p=pathlib.Path(' + JSON.stringify(linuxHeartbeat) + '); [(p.write_text(str(n)),time.sleep(.1)) for n in range(200)]';
+  const parent = 'import subprocess,time;subprocess.Popen(["/usr/bin/python3","-B","-c",' + JSON.stringify(child) + ']);time.sleep(20)';
+  const code = 'import sys,json,subprocess;sys.path.insert(0,sys.argv[1]);from owned_guest import install; b=json.loads(sys.argv[3]);install(sys.argv[2],b);subprocess.run([b["wslExecutable"],"-d",b["distro"],"--exec",b["interpreter"],"-B","-c",sys.argv[4]],check=True)';
+  let cancel;
+  try {
+    const fullPython = execFileSync(python, ['-c', 'import sys;print(sys.executable)'], { encoding: 'utf8' }).trim();
+    const promise = runOwnedProcess({ python: fullPython, args: ['-B', '-c', code, join(runtimeFile('owned_guest.py'), '..'), root, JSON.stringify(backend), parent], cwd: root, timeout: 25000, registerCancel: (value) => { cancel = value; } });
+    for (let n = 0; n < 150 && !existsSync(heartbeat); n++) await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.ok(existsSync(heartbeat), 'real Linux child has started'); cancel();
+    assert.equal((await promise).cancelled, true);
+    const stoppedAt = readFileSync(heartbeat, 'utf8');
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    assert.equal(readFileSync(heartbeat, 'utf8'), stoppedAt, 'Linux descendant is stopped with its owned command group');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

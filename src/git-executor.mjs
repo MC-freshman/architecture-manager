@@ -35,7 +35,8 @@ export function applyGitTransaction({ plan, actor = 'local-user', auditRoot = de
       const scan = scanSensitivePaths(root, step.paths);
       if (!scan.clean) throw Object.assign(new Error('COMMIT_BLOCKED_SENSITIVE'), { findings: scan.findings });
       run(root, ['add', '--', ...step.paths]);
-      run(root, ['commit', '-m', step.message]);
+      const identityOptions = step.identity ? ['-c', `user.name=${step.identity.name}`, '-c', `user.email=${step.identity.email}`] : [];
+      run(root, [...identityOptions, 'commit', '-m', step.message]);
       const head = run(root, ['rev-parse', 'HEAD']);
       return succeed(`HEAD:${head.slice(0, 12)}`, { oldSha256: headBefore, newSha256: head });
     }

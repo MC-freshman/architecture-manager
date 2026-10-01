@@ -27,7 +27,13 @@ export function OnboardPanel({ api, workspace, inventory, busy = false, setPlanP
     let active = true;
     api.readOnboardingConfig({ workspaceRoot: workspace, platformId }).then((data) => {
       if (!active) return;
-      setSnapshot(data); setFields(data.fields); setLocalError('');
+      setSnapshot(data); setFields(data.pendingAutomatic?.inputs.fields || data.fields); setLocalError('');
+      if (data.pendingAutomatic) {
+        const saved = data.pendingAutomatic.inputs;
+        setBackendFields(saved.backendFields); setSoftwareBodies(saved.bodies);
+        setSoftwarePython(saved.interpreterAliases.PPython || ''); setConfirmed(saved.confirmed);
+        setResult({ status: `已恢复接入参数；上次停止在 ${data.pendingAutomatic.stoppedAt || '未完成步骤'}` });
+      }
     }).catch((error) => { if (active) setLocalError(friendlyError(error)); });
     return () => { active = false; };
   }, [workspace, platformId, inventory]);
@@ -100,6 +106,8 @@ export function OnboardPanel({ api, workspace, inventory, busy = false, setPlanP
       </>}
       {step === 5 && <>
         <p>治理文档和 Git 记录与检查证据一起保存。只有全部必需步骤通过，才显示“接入完成”。</p>
+        <label className="onboarding-field"><span>Git 提交姓名（本机未配置时填写）</span><input value={fields.gitAuthorName || ''} onChange={(event) => field('gitAuthorName', event.target.value)} /></label>
+        <label className="onboarding-field"><span>Git 提交邮箱</span><input value={fields.gitAuthorEmail || ''} onChange={(event) => field('gitAuthorEmail', event.target.value)} /></label>
         <button className="small-button" disabled={working || !snapshot?.exists || !api.previewOnboardingGovernancePlan} onClick={() => act(() => api.previewOnboardingGovernancePlan({ workspaceRoot: workspace, platformId }), '治理文档计划已生成。')}>预览治理登记</button>
         <button className="small-button" disabled={working || !snapshot?.exists || !api.readOnboardingState} onClick={() => act(() => api.readOnboardingState({ workspaceRoot: workspace, platformId }))}>查看接入记录与恢复点</button>
         <button className="small-button primary-small" disabled={working || !snapshot?.exists} onClick={() => act(() => api.previewOnboardingFinalizePlan({ workspaceRoot: workspace, platformId }), '接入入库计划已生成，提交后自动核验完成条件。')}>提交配置并完成接入</button>

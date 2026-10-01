@@ -23,6 +23,8 @@ def main(config_path, output_path):
     config = load(config_path)
     output = Path(output_path); output.parent.mkdir(parents=True, exist_ok=True)
     root = output.parent
+    from owned_guest import install
+    install(root, load(config['executionBackend']))
     runner = Path(config['runner']); sys.path.insert(0, str(runner))
     result = {'schema': 'platform-capability-probe/v1', 'platformId': config['platform'], 'configSha256': hashlib.sha256(Path(config_path).read_bytes()).hexdigest(), 'checks': {}, 'issues': [], 'software': [], 'agent': None, 'workflow': None, 'businessOutputFabricated': False}
     probe_config_path = Path(config_path)
@@ -30,7 +32,12 @@ def main(config_path, output_path):
     try:
         from sandbox import run_script
         from environment_guard import verify_script
-        verification = verify_script(config['environmentManifest'], config['executionBackend'])
+        verification_backend = load(config['executionBackend'])
+        verification_backend['verifyTimeoutSeconds'] = max(600, verification_backend.get('verifyTimeoutSeconds', 0))
+        verification_backend_path = root / 'verification-backend.json'
+        verification_backend_path.write_text(json.dumps(verification_backend), encoding='utf-8')
+        # First preparation verifies the full scientific stack; it is not a 120-second small-env probe.
+        verification = verify_script(config['environmentManifest'], str(verification_backend_path))
         if verification.get('mismatches') != 0: raise ValueError('sealed environment differs from manifest')
         result['environmentVerification'] = verification
         probe_release = root / 'probe-release'; probe_release.mkdir(exist_ok=True)
