@@ -128,9 +128,17 @@ export async function runPlatformCheck({ workspaceRoot, platformId, mode = 'quic
     if (!selected) throw new Error('NO_CALLABLE_WORKFLOW_REGISTERED');
     matrixArgs.push('--only', only || selected.id);
   }
-  onProgress({ platformId, phase: mode === 'quick' ? '检查受影响调用格' : '首次完整调用矩阵', outputPath: out });
+  const callableCount = mode === 'full' ? ['tool', 'agent', 'software'].reduce((count, repo) => {
+    const registry=readJson(join(root,repo,'registry.json'));
+    const entries=registry[repo === 'tool' ? 'workflows' : repo === 'agent' ? 'agents' : 'software'] || [];
+    return count+entries.filter(entry=>entry.enabled === true && entry.invocable !== false).length;
+  },0) : 1;
+  // First onboarding must finish the required inventory; a fixed 30-minute cap
+  // can abort a valid large registry. This budget does not claim to improve speed.
+  const matrixTimeout=mode === 'quick' ? 180000 : Math.max(1800000, callableCount*90000);
+  onProgress({ platformId, phase: mode === 'quick' ? '检查受影响调用格' : `首次完整调用矩阵（${callableCount} 项）`, timeoutSeconds:matrixTimeout/1000, outputPath: out });
   const driver = runtimeFile('matrix_driver.py');
-  const matrixResult = await command(driver, [matrix, ...matrixArgs], mode === 'quick' ? 180000 : 1800000);
+  const matrixResult = await command(driver, [matrix, ...matrixArgs], matrixTimeout);
   if (matrixResult.cancelled) throw new Error('ONBOARDING_CANCELLED');
   let floor = null;
   let matrixReport = null;
