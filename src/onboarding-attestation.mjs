@@ -38,6 +38,12 @@ export function buildOnboardingAttestationPlan({ workspaceRoot, platformId, evid
     else capabilities.gapPlan[`action:${action}`] = { path: '回到接入向导修复运行环境或 provider 后重新运行能力探针', costMinutes: 30 };
   }
   if (proof.checks['administrator-consent-denied']) { capabilities.descriptor.profiles.administrator = { declared: true, adapters: ['per-call-connector-consent'], evidencePath, elevatedDuringProbe: false }; delete capabilities.declaredAbsent['profile:administrator']; }
+  if (proof.jail?.checks?.renderer === true) {
+    capabilities.profiles ||= {};
+    capabilities.profiles.renderer = { adapters: ['matplotlib-adapter-first'], requires: ['matplotlib'], evidencePath, evidenceSha256: sha256(readFileSync(evidencePath)) };
+    capabilities.descriptor.profiles.renderer = { declared: true, adapters: ['matplotlib-adapter-first'], evidencePath };
+    delete capabilities.declaredAbsent['profile:renderer'];
+  }
   if (proof.checks['script-environment-isolation-jail']) {
     const triples = [{ filesystem: 'project-scoped', network: 'deny', process: 'allowlisted-only' }, { filesystem: 'platform-runtime-write-shared-read-only', network: 'deny', process: 'isolated-python' }, { filesystem: 'shared-read-only-platform-report-write', network: 'deny', process: 'none' }];
     capabilities.permissionAdapters = [...(capabilities.permissionAdapters || []).filter((a) => !triples.some((b) => a.filesystem === b.filesystem && a.network === b.network && a.process === b.process)), ...triples.map((triple) => ({ ...triple, evidence: `Target-platform jail probe ${evidencePath} sha256=${sha256(readFileSync(evidencePath))}` }))];

@@ -58,8 +58,17 @@ except OSError: checks["outside-write-denied"]=True
 try: subprocess.run(["/usr/bin/id"],check=True)
 except OSError: checks["unapproved-process-denied"]=True
 checks["network-denied"]=os.readlink("/proc/self/ns/net")!=sys.argv[1]
+checks["renderer"]=False
+try:
+ os.environ["MPLCONFIGDIR"]="/work/mpl-cache"
+ import matplotlib
+ matplotlib.use("Agg")
+ import matplotlib.pyplot as plt
+ fig,ax=plt.subplots();ax.plot([0,1],[0,1]);fig.savefig("/work/renderer-probe.png");plt.close(fig)
+ checks["renderer"]=open("/work/renderer-probe.png","rb").read(8)==bytes([137,80,78,71,13,10,26,10])
+except Exception: pass
 print(json.dumps(checks))
-sys.exit(0 if all(checks.values()) else 1)
+sys.exit(0 if all(value for key,value in checks.items() if key!="renderer") else 1)
 '''
         (probe_release / 'probe.py').write_text(script, encoding='utf-8')
         attempt = root / ('jail-' + str(time.time_ns()))
@@ -68,7 +77,7 @@ sys.exit(0 if all(checks.values()) else 1)
         answer = run_script(probe_release, 'probe.py', [namespace], root / 'probe-work', Path(config['scriptEnvironment']), attempt, timeout=30, backend=config['executionBackend'], seal_manifest=config['environmentManifest'], seal_digest=hashlib.sha256(Path(config['environmentManifest']).read_bytes()).hexdigest())
         checks = json.loads((attempt / 'stdout.log').read_text(encoding='utf-8').splitlines()[-1])
         result['jail'] = {'result': answer, 'checks': checks, 'path': str(attempt)}
-        result['checks']['script-environment-isolation-jail'] = answer.get('exitCode') == 0 and answer.get('processTreeEnded') is True and all(checks.values())
+        result['checks']['script-environment-isolation-jail'] = answer.get('exitCode') == 0 and answer.get('processTreeEnded') is True and all(value for key,value in checks.items() if key!='renderer')
         if result['checks']['script-environment-isolation-jail']:
             candidate = load(config['capabilities'])
             candidate['checks'] = {**candidate.get('checks', {}), 'manager-jail-probed': True}
@@ -99,6 +108,10 @@ sys.exit(0 if all(checks.values()) else 1)
         stopped, _ = ops.exchange(runner / 'cli.py', probe_config_path, {'operation': 'stop', 'runId': run_id, 'expectedStateRevision': state['stateRevision'], 'reason': 'Maintenance claim probe; no business submit'}, root, 3)
         result['prompt'] = {'runId': run_id, 'prepareOk': prepared.get('ok'), 'claimOk': claimed.get('ok'), 'stopOk': stopped.get('ok'), 'stageId': claimed.get('result', {}).get('task', {}).get('stageId')}
         result['checks']['prompt-stage-claim'] = bool(claimed.get('ok') and result['prompt']['stageId'] and stopped.get('ok'))
+        foreign_id = 'manager-foreign-' + str(time.time_ns())
+        refused, _ = ops.exchange(runner / 'cli.py', probe_config_path, {**request, 'platform': 'manager-foreign', 'runId': foreign_id}, root, 4)
+        result['platformIdentityRefusal'] = refused.get('error')
+        result['checks']['platform-identity-denied'] = refused.get('ok') is False and (refused.get('error') or {}).get('code') in ('UNAUTHORIZED','INVALID_REQUEST') and not (Path(load(probe_config_path)['runsRoot']) / foreign_id).exists()
     except Exception as error:
         result['issues'].append({'id': 'action:prompt', 'reason': str(error)[:600]})
     # Provider actually starts a locked child and stops it awaiting authored business content.
