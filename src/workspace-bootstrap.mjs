@@ -2,7 +2,7 @@
 // fresh local root, verify it looks like an architecture workspace, and hand
 // it to the normal first-scan flow. Local-only, single user, no server.
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { defaultAuditRoot } from './core/paths.mjs';
 import { makeId, output, requirePlan, writeAudit } from './transactions/kernel.mjs';
@@ -44,12 +44,16 @@ export function applyWorkspaceClone({ plan }, { actor = 'local-user', auditRoot 
   const id = makeId(plan, now);
   const createdHere = !existsSync(destination);
   try {
-    execFileSync('git', ['-c', 'core.longpaths=true', 'clone', '--no-hardlinks', '-c', 'core.longpaths=true', plan.target.remote, destination], { encoding: 'utf8', timeout: 600000, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024 });
+    execFileSync('git', ['-c', 'core.longpaths=true', 'clone', '--no-hardlinks', '--no-checkout', '-c', 'core.longpaths=true', '-c', 'core.autocrlf=false', plan.target.remote, destination], { encoding: 'utf8', timeout: 600000, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024 });
     const head = execFileSync('git', ['-C', destination, 'rev-parse', 'HEAD'], { encoding: 'utf8', windowsHide: true }).trim();
+    // Highest-priority local attributes also override nested upstream text=auto.
+    // Set before the first checkout; frozen release bytes must equal their Git blobs.
+    writeFileSync(join(destination, '.git/info/attributes'), '* -text\n', { flag: 'wx' });
+    execFileSync('git', ['-C', destination, 'reset', '--hard', head], { encoding: 'utf8', timeout: 600000, windowsHide: true, maxBuffer: 16 * 1024 * 1024 });
     const missing = ARCHITECTURE_MARKERS.filter((marker) => !existsSync(join(destination, marker)));
     if (missing.length > 0) throw Object.assign(new Error(`GIT_CLONE_NOT_ARCHITECTURE:${missing.join(',')}`), { missing });
     const event = writeAudit({ actor, auditRoot, now, transactionId: id, plan, action: 'workspace-clone', status: 'applied', target: destination, newSha256: head, writePerformed: true });
-    return { ...output(event), head, destination };
+    return { ...output(event), head, destination, bytePreservingCheckout: true };
   } catch (error) {
     const detail = String(error?.message ?? error);
     writeAudit({ actor, auditRoot, now, transactionId: id, plan, action: 'workspace-clone', status: 'failed', target: destination, error: detail.slice(0, 400) });

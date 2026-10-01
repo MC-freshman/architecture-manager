@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { applyWorkspaceClone, buildWorkspaceClonePlan } from '../src/workspace-bootstrap.mjs';
@@ -48,4 +48,23 @@ test('rejects non-empty destinations, bad remotes and non-architecture repos wit
   assert.ok(!existsSync(destination), 'partial clone removed');
   rmSync(dirty, { recursive: true, force: true });
   rmSync(source, { recursive: true, force: true });
+});
+
+test('nested upstream EOL attributes cannot change frozen bytes during clone', () => {
+  const source = makeSourceRepo(true);
+  const parent = mkdtempSync(join(tmpdir(), 'am-byte-clone-'));
+  const destination = join(parent, 'workspace');
+  const relative = 'tool/sample/versions/1.0.0/upstream';
+  try {
+    mkdirSync(join(source, relative), { recursive: true });
+    writeFileSync(join(source, relative, '.gitattributes'), '* text eol=crlf\n');
+    writeFileSync(join(source, relative, 'frozen.txt'), 'frozen\nbytes\n');
+    execFileSync('git', ['-C', source, 'add', '--', relative], { stdio: 'ignore' });
+    execFileSync('git', ['-C', source, 'commit', '-m', 'nested upstream attribute'], { stdio: 'ignore' });
+    const blob = execFileSync('git', ['-C', source, 'cat-file', 'blob', `HEAD:${relative}/frozen.txt`]);
+    const result = applyWorkspaceClone({ plan: buildWorkspaceClonePlan({ remote: source, destination, confirmed: true }) }, { auditRoot: join(parent, 'audit') });
+    assert.equal(result.bytePreservingCheckout, true);
+    assert.deepEqual(readFileSync(join(destination, relative, 'frozen.txt')), blob);
+    assert.equal(execFileSync('git', ['-C', destination, 'status', '--porcelain'], { encoding: 'utf8' }).trim(), '');
+  } finally { rmSync(parent, { recursive: true, force: true }); rmSync(source, { recursive: true, force: true }); }
 });

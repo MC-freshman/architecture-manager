@@ -10,6 +10,7 @@ import { inspectPlatformConnection, runPlatformCheck } from './platform-check.mj
 import { execFileSync } from 'node:child_process';
 import { onboardingGitPaths } from './onboarding-governance.mjs';
 import { requestOnboardingCancellation } from './core/onboarding-jobs.mjs';
+import { pendingFirstMatrix, mergeFirstMatrix } from './onboarding-recovery.mjs';
 
 const active = new Map();
 const keyOf = (root, id) => `${resolve(root).toLowerCase()}:${id}`;
@@ -42,12 +43,14 @@ export async function executeOnboardingChecks({ workspaceRoot, platformId, only 
   const binding = clientBinding(workspaceRoot, platformId);
   const previous = readOnboardingState({ workspaceRoot, platformId });
   const firstCertification = readFirstCertification(previous, workspaceRoot, platformId);
+  const recovery = !only && !firstCertification ? pendingFirstMatrix(previous,workspaceRoot,platformId,binding,environmentBinding(workspaceRoot,platformId)) : null;
   if (!only && firstCertification?.versionsSha256 === binding.versionsSha256) only = 'expert-task';
   if (previous.configSha256 && previous.configSha256 !== binding.configSha256 && ['running', 'interrupted'].includes(previous.status)) throw new Error('ONBOARDING_RESUME_DRIFT');
   const reusable = previous.configSha256 === binding.configSha256 && previous.versionsSha256 === binding.versionsSha256 && previous.adapterSha256 === binding.adapterSha256 && previous.environmentBindingSha256 === environmentBinding(workspaceRoot, platformId);
   const state = { schema: 'architecture-manager-onboarding/v1', platformId, executionId: reusable ? previous.executionId : randomUUID(), ...binding, status: 'running', startedAt: reusable ? previous.startedAt : new Date().toISOString(), steps: reusable ? (previous.steps || []).filter((step) => step.status === 'passed') : [], stoppedAt: null, writePerformed: true };
   state.environmentBindingSha256 = environmentBinding(workspaceRoot, platformId);
   state.firstCertification = firstCertification;
+  state.pendingMatrixRecovery = recovery;
   const job = { cancelled: false, cancel: null }; active.set(key, job); save(workspaceRoot, platformId, state);
   const step = async (name, operation, passed) => {
     if (job.cancelled) throw new Error('ONBOARDING_CANCELLED');
@@ -65,8 +68,12 @@ export async function executeOnboardingChecks({ workspaceRoot, platformId, only 
   };
   try {
     // This check is selected against the target config. Patches use only affected cells after initial certification.
-    const checked = await step(only ? 'affected-cells' : 'conform-and-first-matrix', () => check({ workspaceRoot, platformId, mode: only ? 'quick' : 'full', only, stopOnFloorFailure: true, onProgress, registerCancel: (cancel) => { job.cancel = cancel; } }), (result) => result.issues?.length === 0 && result.counts?.fail === 0 && !result.counts?.needsInput);
-    if (!only) state.firstCertification = readFirstCertification({ ...state, steps: [{ status: 'passed', step: 'conform-and-first-matrix', result: checked }] }, workspaceRoot, platformId);
+    const checked = await step(only ? 'affected-cells' : 'conform-and-first-matrix', async () => {
+      if(recovery) onProgress({platformId,phase:`复验首次矩阵失败格：${recovery.only}`,reused:false});
+      const result=await check({ workspaceRoot, platformId, mode: only || recovery ? 'quick' : 'full', only:only || recovery?.only, stopOnFloorFailure: true, onProgress, registerCancel: (cancel) => { job.cancel = cancel; } });
+      return recovery ? mergeFirstMatrix(recovery,result,workspaceRoot,platformId) : result;
+    }, (result) => result.issues?.length === 0 && result.counts?.fail === 0 && !result.counts?.needsInput);
+    if (!only) { state.firstCertification = readFirstCertification({ ...state, steps: [{ status: 'passed', step: 'conform-and-first-matrix', result: checked }] }, workspaceRoot, platformId); state.pendingMatrixRecovery = null; }
     await step('client-tool-loop', () => clientProbe({ workspaceRoot, platformId }, { registerCancel: (cancel) => { job.cancel = cancel; } }), (result) => result.status === 'passed');
     state.status = 'verified-awaiting-governance-git'; state.currentStep = 'governance-git';
   } catch (error) {
