@@ -35,6 +35,10 @@ export function cancelOnboarding({ workspaceRoot, platformId }) {
   return { status: 'cancellation-requested', writePerformed: false };
 }
 
+export function cancelAllOnboardingChecks() {
+  for (const job of active.values()) { job.cancelled = true; job.cancel?.(); }
+}
+
 export async function executeOnboardingChecks({ workspaceRoot, platformId, only = null }, { onProgress = () => {}, check = runPlatformCheck, clientProbe = probeOnboardingClient } = {}) {
   const key = keyOf(workspaceRoot, platformId);
   if (active.has(key)) throw new Error('ONBOARDING_ALREADY_RUNNING');

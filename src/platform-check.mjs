@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
-import { join, relative, resolve, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { sha256 } from './core/hash.mjs';
 import { inside, readJson } from './core/json.mjs';
 import { promisify } from 'node:util';
@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { runtimeFile } from './core/runtime-path.mjs';
 import { clientBinding } from './onboarding-client.mjs';
 import { environmentBinding } from './onboarding-state.mjs';
+import { matrixProgressDecoder } from './core/matrix-progress.mjs';
 
 function fail(stage, issues, extra = {}) { return { schema: 'architecture-manager-platform-check/v1', stage, issues, ...extra, writePerformed: false }; }
 function reportGaps(report) {
@@ -103,15 +104,17 @@ export async function runPlatformCheck({ workspaceRoot, platformId, mode = 'quic
   const config = readJson(pre.configPath); const bridge = readJson(pre.bridgePath);
   const python = bridge.runner?.python || config.interpreters?.['.py'];
   if (!python || !existsSync(python)) throw new Error('RUNTIME_PYTHON_REQUIRED');
-  const command = async (script, args, timeout) => {
-    try { return await runOwnedProcess({ python, args: ['-B', script, ...args], cwd: out, scopeRoot: out, env: environment, timeout, registerCancel }); }
+  const command = async (script, args, timeout, onOutput = () => {}, cancellable = true) => {
+    try { return await runOwnedProcess({ python, args: ['-B', script, ...args], cwd: out, scopeRoot: out, env: environment, timeout, registerCancel: cancellable ? registerCancel : () => {}, onOutput }); }
     catch (error) { return { stdout: error.stdout || '', stderr: error.stderr || String(error.message), exitCode: error.code ?? 1 }; }
   };
   const conformPath = join(out, 'conform.json');
   const matrixPath = join(out, 'matrix.json');
   onProgress({ platformId, phase: '计算能力并集', outputPath: out });
   const conformResult = await command(conform, ['--config', pre.configPath, '--out', conformPath], 120000);
-  if (conformResult.cancelled) throw new Error('ONBOARDING_CANCELLED');
+  if (conformResult.cancelled || conformResult.timedOut) {
+    return saveCheck(base,out,{schema:'architecture-manager-platform-check/v1',platformId,mode,stage:conformResult.cancelled ? 'check-cancelled':'check-failed',status:'aborted',reason:conformResult.cancelled ? 'cancelled':'timeout',issues:[conformResult.cancelled ? '能力检查已取消，调用矩阵尚未执行。':'能力检查超时（120 秒），调用矩阵尚未执行。'],bridgeSha256:pre.bridgeSha256,configSha256:pre.configSha256,conformPath,matrixPath:null,counts:{pass:0,fail:0},checkedAt:new Date().toISOString(),evidenceFresh:true});
+  }
   let initialFloor = null; try { initialFloor = readJson(conformPath); } catch { /* Empty output is never a pass. */ }
   if (!initialFloor || (stopOnFloorFailure && (!initialFloor.floorReached || conformResult.exitCode !== 0))) {
     const result = { schema: 'architecture-manager-platform-check/v1', platformId, mode, stage: 'check-failed', bridgeSha256: pre.bridgeSha256, configSha256: pre.configSha256, conformPath, matrixPath: null, counts: { pass: 0, fail: 0, conform: initialFloor?.counts || null }, gaps: reportGaps(initialFloor), issues: [initialFloor ? `能力地板尚未通过：缺口 ${initialFloor.counts?.declaredAbsent ?? '?'}，未验证 ${initialFloor.counts?.unverified ?? '?'}` : '能力检查未产生可读报告'], checkedAt: new Date().toISOString(), evidenceFresh: true, writePerformed: true };
@@ -120,6 +123,10 @@ export async function runPlatformCheck({ workspaceRoot, platformId, mode = 'quic
     return saveCheck(base, out, result);
   }
   const matrixArgs = ['--config', pre.configPath, '--out', matrixPath, '--runs-root', join(out, 'matrix-runs')];
+  const partialPath = join(out, 'matrix.partial.json');
+  const manifestPath=join(dirname(dirname(matrix)), 'manifest.json');
+  const progressSupported = existsSync(manifestPath) && readJson(manifestPath).interface?.matrixProgress === 'ai-invocation-matrix-event/v1';
+  if (progressSupported) matrixArgs.push('--progress-jsonl', '--partial-out', partialPath);
   const exceptionsPath = join(root, platformId, 'bridge', 'invocation-exceptions.json');
   if (existsSync(exceptionsPath)) matrixArgs.push('--exceptions', exceptionsPath);
   if (mode === 'quick') {
@@ -138,12 +145,16 @@ export async function runPlatformCheck({ workspaceRoot, platformId, mode = 'quic
   const matrixTimeout=mode === 'quick' ? 180000 : Math.max(1800000, callableCount*90000);
   onProgress({ platformId, phase: mode === 'quick' ? '检查受影响调用格' : `首次完整调用矩阵（${callableCount} 项）`, timeoutSeconds:matrixTimeout/1000, outputPath: out });
   const driver = runtimeFile('matrix_driver.py');
-  const matrixResult = await command(driver, [matrix, ...matrixArgs], matrixTimeout);
-  if (matrixResult.cancelled) {
+  const matrixResult = await command(driver, [matrix, ...matrixArgs], matrixTimeout, matrixProgressDecoder(platformId, onProgress));
+  if (matrixResult.cancelled || matrixResult.timedOut) {
     onProgress({ platformId, phase: '停止本次矩阵的维护探针', outputPath: out });
-    const cleanup = await command(runtimeFile('matrix_cleanup.py'), [pre.configPath, out], 120000);
+    const cleanup = await command(runtimeFile('matrix_cleanup.py'), [pre.configPath, out], 120000, () => {}, false);
     let cleanupReport = null; try { cleanupReport = readJson(join(out, 'cancel-cleanup.json')); } catch { /* Never infer safe cleanup from an empty report. */ }
-    return saveCheck(base, out, { schema: 'architecture-manager-platform-check/v1', platformId, mode, stage: 'check-cancelled', status: 'cancelled', bridgeSha256: pre.bridgeSha256, configSha256: pre.configSha256, conformPath, matrixPath: null, counts: { pass: 0, fail: 0, conform: initialFloor.counts }, gaps: reportGaps(initialFloor), issues: [cleanup.exitCode === 0 && cleanupReport?.ok ? '本次检查已取消，未完成的维护探针已停止；部分结果不作为接入成功证据。' : '本次检查已取消，但维护探针未全部安全停止，请查看清理报告。'], cleanupPath: join(out, 'cancel-cleanup.json'), commandErrors: cleanup.exitCode ? [cleanup.stderr.slice(0, 2000)] : [], checkedAt: new Date().toISOString(), evidenceFresh: true });
+    let partial=null; try { partial=readJson(partialPath); } catch { /* Missing partial output is not a successful row. */ }
+    const abortedPath=join(out,'aborted.json');
+    writeFileSync(abortedPath,JSON.stringify({schema:'architecture-manager-aborted-check/v1',status:'aborted',reason:matrixResult.timedOut ? 'timeout':'cancelled',certifiable:false,partialPath:partial ? partialPath:null,partialSha256:partial ? sha256(readFileSync(partialPath)):null,completed:partial?.completed || 0,rows:partial?.rows || [],checkedAt:new Date().toISOString()},null,2)+'\n',{flag:'wx'});
+    const message=matrixResult.timedOut ? `调用检查超时（${matrixTimeout/1000} 秒）` : '本次检查已取消';
+    return saveCheck(base, out, { schema: 'architecture-manager-platform-check/v1', platformId, mode, stage: matrixResult.timedOut ? 'check-failed':'check-cancelled', status: 'aborted', reason:matrixResult.timedOut ? 'timeout':'cancelled', bridgeSha256: pre.bridgeSha256, configSha256: pre.configSha256, conformPath, matrixPath: null, abortedPath, partialPath: partial ? partialPath : null, counts: { pass: 0, fail: 0, conform: initialFloor.counts }, gaps: reportGaps(initialFloor), issues: [cleanup.exitCode === 0 && cleanupReport?.ok ? `${message}，未完成的维护探针已停止；部分结果不作为接入成功证据。` : `${message}，但维护探针未全部安全停止，请查看清理报告。`], cleanupPath: join(out, 'cancel-cleanup.json'), commandErrors: cleanup.exitCode ? [cleanup.stderr.slice(0, 2000)] : [], checkedAt: new Date().toISOString(), evidenceFresh: true });
   }
   let floor = null;
   let matrixReport = null;

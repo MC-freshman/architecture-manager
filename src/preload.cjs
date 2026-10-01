@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('architectureManager', Object.freeze({
   scanWorkspace: (root) => ipcRenderer.invoke('workspace:scan', root),
   inspectPlatform: (input) => ipcRenderer.invoke('platform:inspect', input),
   inspectPlatformConnection: (input) => ipcRenderer.invoke('platform:connection', input),
+  refreshPlatform: (input) => ipcRenderer.invoke('platform:refresh', input),
   runPlatformCheck: (input) => ipcRenderer.invoke('platform:check', input),
   previewPlatformPlan: (input) => ipcRenderer.invoke('plan:platform-view', input),
   previewResourcePlan: (input) => ipcRenderer.invoke('plan:resource-pointer', input),

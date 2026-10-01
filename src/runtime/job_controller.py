@@ -48,11 +48,11 @@ def main():
             destination.buffer.write(data); destination.buffer.flush()
     threads = [threading.Thread(target=copy, args=(process.stdout, sys.stdout)), threading.Thread(target=copy, args=(process.stderr, sys.stderr))]
     for thread in threads: thread.start()
-    started = time.monotonic(); cancelled = False
+    started = time.monotonic(); termination = None
     try:
         while process.poll() is None:
             if Path(specification['cancelPath']).exists() or time.monotonic() - started > specification['timeoutSeconds']:
-                cancelled = True
+                termination = 'cancelled' if Path(specification['cancelPath']).exists() else 'timed-out'
                 # Existing WSL controllers own their Linux descendants and accept this exact cancel marker.
                 for record in Path(specification['scopeRoot']).rglob('process.json'):
                     record.with_name('cancel.flag').touch()
@@ -65,7 +65,7 @@ def main():
     finally:
         if job: kernel.CloseHandle(job)
         for thread in threads: thread.join(timeout=5)
-    return 125 if cancelled else process.returncode
+    return 125 if termination == 'cancelled' else 124 if termination == 'timed-out' else process.returncode
 
 
 if __name__ == '__main__':

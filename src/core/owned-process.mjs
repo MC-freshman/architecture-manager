@@ -15,5 +15,5 @@ export function runOwnedProcess({ python, executable = python, args, input = nul
   child.stdout.on('data', (data) => { stdout += data.toString('utf8'); onOutput(data.toString('utf8')); if (stdout.length > 16 * 1024 * 1024) writeFileSync(cancelPath, 'output-limit'); });
   child.stderr.on('data', (data) => { stderr += data.toString('utf8'); if (stderr.length > 16 * 1024 * 1024) writeFileSync(cancelPath, 'output-limit'); });
   child.stdin.end(JSON.stringify({ argv: [executable, ...args], input, cwd, scopeRoot, cancelPath, timeoutSeconds: timeout / 1000 }) + '\n');
-  return new Promise((resolve, reject) => { child.once('error', reject); child.once('close', (exitCode) => { registerCancel(null); resolve({ stdout, stderr, exitCode, cancelled: exitCode === 125 }); }); });
+  return new Promise((resolve, reject) => { child.once('error', reject); child.once('close', (exitCode) => { registerCancel(null); resolve({ stdout, stderr, exitCode, cancelled: exitCode === 125, timedOut: exitCode === 124 }); }); });
 }

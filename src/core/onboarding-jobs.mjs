@@ -13,3 +13,8 @@ export function requestOnboardingCancellation(root, id) {
   if (!job) return false;
   job.cancelled = true; job.cancel?.(); return true;
 }
+
+export function cancelAllOnboardingJobs() {
+  for (const job of jobs.values()) { job.cancelled = true; job.cancel?.(); }
+  return jobs.size;
+}

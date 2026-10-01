@@ -82,6 +82,13 @@ function App() {
   ];
   const activeView = workspace ? view : 'platform';
 
+  useEffect(() => {
+    if (view !== 'git' || !workspace || gitDetails) return;
+    let valid = true;
+    api.inspectGit(workspace).then((details) => { if(valid) { setGitDetails(details); setInventory((current) => current ? {...current,git:details}:current); } }).catch((error)=>{if(valid) setMessage(`Git 状态读取失败：${friendlyError(error)}`);});
+    return () => {valid=false;};
+  },[view,workspace,gitDetails]);
+
   useEffect(() => api.onTransactionProgress((progress) => setTransactionProgress(progress)), []);
 
   useEffect(() => {
@@ -120,6 +127,7 @@ function App() {
         api.scanSensitiveFiles(workspace)
       ]);
       setGitDetails(details);
+      setInventory((current) => current ? { ...current, git: details } : current);
       setSensitiveScan(scanResult);
       setMessage(`Git 状态已刷新：${details.status?.length || 0} 项改动，敏感文件扫描 ${scanResult.clean ? '通过' : `发现 ${scanResult.findings.length} 项待核对`}。`);
     } catch (error) {
@@ -241,8 +249,8 @@ function App() {
     setMessage(`正在检查 ${platform.id}，请等待结果……`);
     try {
       const result = await api.runPlatformCheck({ workspaceRoot: workspace, platformId: platform.id, mode });
-      const refreshed = await api.scanWorkspace(workspace);
-      setInventory(refreshed);
+      const refreshed = await api.refreshPlatform({ workspaceRoot:workspace, platformId:platform.id });
+      setInventory((current) => ({ ...current, platforms:current.platforms.map((item) => item.id === platform.id ? refreshed : item) }));
       setMessage(`${platform.id} 检查结果：${result.stage}；${result.issues.length ? result.issues.join('；') : '无缺口'}。证据：${result.evidencePath}`);
     } catch (error) { setMessage(`${platform.id} 检查失败：${friendlyError(error)}`); }
     finally { setBusy(false); setTransactionProgress(null); }
@@ -473,7 +481,7 @@ function App() {
       const verification = await api.verifyPlan({ plan: planPreview });
       const refreshed = await api.scanWorkspace(workspace);
       setInventory(refreshed);
-      setGitDetails(refreshed.git);
+      if (refreshed.git) setGitDetails(refreshed.git);
       if (integrationTargetId && integrationPath) await reloadIntegrationTarget();
       setIntegrationTargetVersion('');
       setTargetVersions({});
@@ -546,7 +554,7 @@ setMessage(planPreview.kind === 'software-launch' ? `连接器答复：${applied
 
       <section className="content">
         <div className="notice" role="status" aria-live="polite"><strong>当前状态：</strong>{message}</div>
-        {transactionProgress && <div className="notice" role="status">正在处理：{transactionProgress.phase || transactionProgress.stage}{transactionProgress.reused ? '（复用有效证据）' : ''}{transactionProgress.path && ` · ${transactionProgress.path}`}<progress value={transactionProgress.bytesDone ?? transactionProgress.filesDone ?? transactionProgress.completed} max={transactionProgress.bytesTotal || transactionProgress.filesTotal || transactionProgress.total} />{transactionProgress.platformId && busy && <button className="small-button" onClick={() => api.cancelOnboarding({ workspaceRoot: workspace, platformId: transactionProgress.platformId })}>停止本次操作</button>}</div>}
+        {transactionProgress && <div className="notice" role="status">正在处理：{transactionProgress.phase || transactionProgress.stage}{transactionProgress.reused ? '（复用有效证据）' : ''}{transactionProgress.path && ` · ${transactionProgress.path}`}{Number.isInteger(transactionProgress.completed) && ` · 已完成 ${transactionProgress.completed}/${transactionProgress.total} 格`}{Number.isFinite(transactionProgress.durationMs) && ` · 本格 ${(transactionProgress.durationMs/1000).toFixed(1)} 秒`}<progress value={transactionProgress.bytesDone ?? transactionProgress.filesDone ?? transactionProgress.completed} max={transactionProgress.bytesTotal || transactionProgress.filesTotal || Math.max(transactionProgress.total || 0,transactionProgress.completed || 1)} />{transactionProgress.platformId && busy && <button className="small-button" onClick={() => api.cancelOnboarding({ workspaceRoot: workspace, platformId: transactionProgress.platformId })}>停止本次操作</button>}</div>}
         <div className="view-container">
           {renderView(activeView)}
         </div>

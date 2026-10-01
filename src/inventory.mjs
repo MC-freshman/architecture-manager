@@ -163,7 +163,14 @@ function summarizeDocument(root, path) {
   };
 }
 
-export function scanWorkspace(workspaceRoot) {
+export function refreshPlatformInventory({ workspaceRoot, platformId }) {
+  const root = normalizeRoot(workspaceRoot);
+  const inspected = inspectPlatformDirectory(root, platformId);
+  const localView = readLocalView(root);
+  return { ...inspected, connection: inspectPlatformConnection({workspaceRoot:root,platformId}), softwareConnector: softwareConnectorStatus(root,platformId), enabled:localView.enabled[platformId] !== false };
+}
+
+export function scanWorkspace(workspaceRoot, { includeGit = false } = {}) {
   const root = normalizeRoot(workspaceRoot);
   const topLevel = readdirSync(root, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
@@ -174,8 +181,7 @@ export function scanWorkspace(workspaceRoot) {
   for (const item of shared) errors.push(...item.errors);
   const localView = readLocalView(root);
   const platforms = allPlatformIds(root).map((id) => {
-    const inspected = inspectPlatformDirectory(root, id);
-    return { ...inspected, connection: inspectPlatformConnection({ workspaceRoot: root, platformId: id }), softwareConnector: softwareConnectorStatus(root, id), enabled: localView.enabled[id] !== false };
+    return refreshPlatformInventory({ workspaceRoot:root, platformId:id });
   });
   const versionsRoot = join(root, 'versions');
   const architectureDocuments = existsSync(versionsRoot)
@@ -224,7 +230,7 @@ export function scanWorkspace(workspaceRoot) {
     },
     architectureDocuments: uniqueArchitectureDocuments,
     documentSummaries,
-    git: inspectGit(root),
+    git: includeGit ? inspectGit(root) : null,
     errors,
     writePerformed: false
   };

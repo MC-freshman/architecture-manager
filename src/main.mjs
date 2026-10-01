@@ -3,6 +3,10 @@ import { existsSync, statSync, readFileSync, writeFileSync, mkdirSync } from 'no
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startOnboardingJob } from './core/onboarding-jobs.mjs';
+import { cancelAllOnboardingJobs } from './core/onboarding-jobs.mjs';
+import { cancelAllOnboardingChecks } from './onboarding-state.mjs';
+import { taskLifecycle } from './core/task-lifecycle.mjs';
+import { refreshPlatformInventory } from './inventory.mjs';
 import {
   applyPlan,
   buildDefectBookEditPlan,
@@ -73,6 +77,11 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const defaultWorkspace = process.env.ARCHITECTURE_MANAGER_WORKSPACE || null;
+const lifecycle = taskLifecycle(() => { cancelAllOnboardingJobs(); cancelAllOnboardingChecks(); });
+let quitReady = false;
+async function safeQuit() {
+  await lifecycle.close(); quitReady = true; app.quit();
+}
 function preferences() {
   const path = join(app.getPath('userData'), 'workspace-preferences.json');
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return {}; }
@@ -85,7 +94,7 @@ function rememberWorkspace(root) {
 function registerIpc() {
   const owned = async (input, operation) => {
     const control = startOnboardingJob(input.workspaceRoot, input.platformId);
-    try { return await operation(control.registerCancel); } finally { control.finish(); }
+    try { return await lifecycle.track(() => operation(control.registerCancel)); } finally { control.finish(); }
   };
   ipcMain.handle('ui:version', () => app.getVersion());
   ipcMain.handle('ui:confirm', async (_event, message) => {
@@ -105,6 +114,7 @@ function registerIpc() {
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
   ipcMain.handle('workspace:scan', (_event, root) => { const result = scanWorkspace(root); rememberWorkspace(result.workspaceRoot); return result; });
+  ipcMain.handle('platform:refresh', (_event, input) => refreshPlatformInventory(input));
   ipcMain.handle('platform:inspect', (_event, input) => inspectPlatformDirectory(input.workspaceRoot, input.platformId, input.directoryRelative));
   ipcMain.handle('platform:connection', (_event, input) => inspectPlatformConnection(input));
   ipcMain.handle('platform:check', (event, input) => owned(input, (registerCancel) => runPlatformCheck({ ...input, registerCancel, onProgress: (progress) => event.sender.send('transaction:progress', progress) })));
@@ -176,7 +186,7 @@ function registerIpc() {
   });
   ipcMain.handle('onboarding:draft', (_event, input) => governanceOnboardingDraft(input.workspaceRoot, input.platformId));
   ipcMain.handle('onboarding:card', (_event, input) => buildOnboardingCard(input.workspaceRoot, input.platformId));
-  ipcMain.handle('onboarding:pipeline', (event, input) => executeOnboardingChecks(input, { onProgress: (progress) => event.sender.send('transaction:progress', progress) }));
+  ipcMain.handle('onboarding:pipeline', (event, input) => lifecycle.track(() => executeOnboardingChecks(input, { onProgress: (progress) => event.sender.send('transaction:progress', progress) })));
   ipcMain.handle('onboarding:state', (_event, input) => readOnboardingState(input));
   ipcMain.handle('onboarding:cancel', (_event, input) => cancelOnboarding(input));
   ipcMain.handle('onboarding:recorded', (_event, input) => markOnboardingRecorded(input));
@@ -185,7 +195,7 @@ function registerIpc() {
   ipcMain.handle('plan:platform-onboarding', (_event, input) => buildAutomaticOnboardingPlan(input));
   ipcMain.handle('plan:workspace-clone', (_event, input) => buildWorkspaceClonePlan(input));
   ipcMain.handle('workspace:clone', (_event, input) => applyWorkspaceClone({ plan: input.plan }, { actor: 'local-user', now: new Date().toISOString() }));
-  ipcMain.handle('transaction:apply', (event, input) => applyPlan({ ...input, onProgress: (progress) => event.sender.send('transaction:progress', progress) }));
+  ipcMain.handle('transaction:apply', (event, input) => lifecycle.track(() => applyPlan({ ...input, onProgress: (progress) => event.sender.send('transaction:progress', progress) })));
   ipcMain.handle('transaction:verify', (_event, input) => verifyPlanTarget(input));
 }
 
@@ -206,6 +216,9 @@ function createWindow() {
     }
   });
   window.once('ready-to-show', () => window.show());
+  window.on('close', (event) => {
+    if (!quitReady && lifecycle.pending) { event.preventDefault(); void safeQuit(); }
+  });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.loadFile(join(__dirname, '..', 'dist', 'index.html'));
   return window;
@@ -222,4 +235,7 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+app.on('before-quit', (event) => {
+  if (!quitReady && lifecycle.pending) { event.preventDefault(); void safeQuit(); }
 });

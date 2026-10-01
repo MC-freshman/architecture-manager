@@ -33,6 +33,7 @@ export function friendlyError(error) {
   const code = String(error?.message ?? error);
   const [key, ...details] = code.split(':');
   const hints = {
+    APPLICATION_CLOSING: '管理台正在停止本次任务并保存中止证据，请等待窗口关闭。',
     GIT_IDENTITY_REQUIRED: '请在接入向导的登记页填写 Git 提交姓名和邮箱，再点击预览一键接入／继续。这是提交署名，无需输入 GitHub 密码。',
     ONBOARDING_CANCELLED: '本次检查已停止，所属进程树已回收。已保存的配置和证据保留，可从向导继续。',
     RAW_SECRET_NOT_ALLOWED: '配置中只能填写凭据引用，不能填写密码或令牌原值。',
