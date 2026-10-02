@@ -49,7 +49,7 @@ MCP 注册配置导出在 `<平台>/bridge/manager-client/mcp-client-registratio
 
 接入状态与恢复点在 `<平台>/runtime/maintenance/manager-onboarding/`。科学环境在本平台 runtime，备份和一条恢复命令在 `inbox/backup/<平台>/manager-environments/<安装 ID>/RESTORE.json`。审计与 checkpoint 在本机 `%LOCALAPPDATA%/ArchitectureManager/audit/`。
 
-0.1.x 已按旧包清理表移入垃圾桶。2026-10-02 清理轮将历史 0.3.1/0.4.0 和重复候选构建压缩归档，release 只保留当前 0.4.1；0.4.0 可从历史 GitHub 发行或按根仓 `versions/架构管理台旧版本与冗余清理P表-20261002.md` 的证据登记恢复。当前 win-unpacked、blockmap、latest.yml 与 0.4.1 配套。使用 0.4.1 时可用旁边的 SHA256SUMS-0.4.1.txt 核对双包。若检查错误点名 app.asar 中的 Python 脚本，请关闭旧候选进程并运行已修复的发行包；新版将辅助脚本置于 app.asar.unpacked。
+0.1.x 已按旧包清理表移入垃圾桶。2026-10-02 清理轮已将历史 0.3.1/0.4.0 和重复候选构建压缩归档，release 只保留当前 0.4.1；0.4.0 可从历史 GitHub 发行或按根仓 `versions/架构管理台旧版本与冗余清理P表-20261002.md` 的证据登记恢复。当前 win-unpacked、blockmap、latest.yml 与 0.4.1 配套。使用 0.4.1 时可用旁边的 SHA256SUMS-0.4.1.txt 核对双包。若检查错误点名 app.asar 中的 Python 脚本，请关闭旧候选进程并运行已修复的发行包；新版将辅助脚本置于 app.asar.unpacked。
 
 ## 开发与验证
 
