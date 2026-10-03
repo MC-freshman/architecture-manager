@@ -1,4 +1,5 @@
 // Mutating operations always return a plan or pass through plan -> apply -> verify.
+export {buildIntakeRevertPlan} from '../domains/intake/journals.mjs';
 export { buildRegistryPlan } from '../catalog.mjs';
 export { buildDefectBookEditPlan } from '../defects.mjs';
 export { buildPlatformViewPlan, buildResourcePointerPlan } from '../plans.mjs';

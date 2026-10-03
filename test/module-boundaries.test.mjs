@@ -12,6 +12,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 test('application boundary exposes the complete IPC domain surface', () => {
   const expected = [
     'scanExternalBody',
+    'listIntakeJournals','readIntakeJournal','buildIntakeRevertPlan',
     'applyPlan', 'applyWorkspaceClone', 'buildDefectBookEditPlan', 'buildDocsSite', 'buildDocumentPlan', 'buildGitPlan', 'buildIntegrationPlan',
     'buildPlatformViewPlan', 'buildRegistryPlan', 'buildReleasePlan', 'buildResourcePointerPlan',
     'buildSoftwareImportPlan', 'buildSoftwareLaunchPlan', 'buildSoftwareRecipePlan', 'buildSoftwareRevertPlan', 'buildSoftwareConnectorLaunchPlan', 'buildPlatformScaffoldPlan', 'buildWorkspaceClonePlan', 'checkDocsLinks', 'diffDocument', 'healthSoftware', 'inspectGit',

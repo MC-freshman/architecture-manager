@@ -401,9 +401,32 @@
       "backend": "scanExternalBody",
       "argumentsStyle": "input",
       "taskMode": "owned"
+    },
+    "listIntakeJournals": {
+      "channel": "intake:history",
+      "phase": "query",
+      "backend": "listIntakeJournals",
+      "argumentsStyle": "input",
+      "taskMode": "owned"
+    },
+    "readIntakeJournal": {
+      "channel": "intake:journal",
+      "phase": "query",
+      "backend": "readIntakeJournal",
+      "argumentsStyle": "input",
+      "taskMode": "owned"
+    },
+    "previewIntakeRevertPlan": {
+      "channel": "intake:revert-plan",
+      "phase": "plan",
+      "backend": "buildIntakeRevertPlan",
+      "argumentsStyle": "input",
+      "taskMode": "owned"
     }
   },
   "planKinds": [
+    "body-import",
+    "body-import-revert",
     "platform-scaffold",
     "platform-configuration",
     "platform-backend",

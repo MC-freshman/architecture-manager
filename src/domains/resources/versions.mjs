@@ -18,7 +18,8 @@ export function validateFrozenResource(workspaceRoot,repository,resourceId,versi
   if(context.visiting.has(key)) throw Error('RESOURCE_DEPENDENCY_CYCLE');
   if(context.seen.has(key)) return context.seen.get?.(key);
   context.visiting.add(key);
-  const directory=targetPath(workspaceRoot,`${repository}/${subdirectory}${resourceId}/versions/${version}`);
+  const canonical=targetPath(workspaceRoot,`${repository}/${subdirectory}${resourceId}/versions/${version}`);
+  const directory=context.directoryForResource?.(key,canonical) || canonical;
   const integrity=(context.verifyDirectory || verifyFrozenDirectory)(directory);
   const get=name=>readFileSync(targetPath(directory,safeRelative(name)),'utf8');
   if(existsSync(targetPath(directory,'SOURCE.json'))) {

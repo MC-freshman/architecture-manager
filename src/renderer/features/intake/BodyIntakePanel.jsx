@@ -1,8 +1,9 @@
 import React,{useState} from 'react';
 import {friendlyError} from '../../presenter.mjs';
+import {ImportHistoryPanel} from './ImportHistoryPanel.jsx';
 const labels={agent:'智能体（agent）',skill:'技能（skill）',tool:'工具／工作流（tool）',platform:'平台客户端',software:'软件／现成 MCP'};
 const size=value=>value>=1024*1024*1024?(value/(1024*1024*1024)).toFixed(2)+' GB':value>=1024*1024?(value/(1024*1024)).toFixed(1)+' MB':value>=1024?(value/1024).toFixed(1)+' KB':value+' B';
-export function BodyIntakePanel({api,workspace,inventory,setMessage,onIntake=null}) {
+export function BodyIntakePanel({api,workspace,inventory,setMessage,setPlanPreview,setPlanPayload,onIntake=null}) {
   const [type,setType]=useState('agent'),[platformId,setPlatformId]=useState(inventory?.platforms?.[0]?.id || ''),[sourcePath,setSourcePath]=useState(''),[result,setResult]=useState(null),[working,setWorking]=useState(false),[error,setError]=useState(''),[page,setPage]=useState(0);
   const choose=async kind=>{try{const path=await api.selectBodySource({kind});if(path){setSourcePath(path);setResult(null);setError('');}else setMessage('已取消选择，原来源未改变。');}catch(error){setError(friendlyError(error));}};
   const scan=async()=>{
@@ -13,7 +14,7 @@ export function BodyIntakePanel({api,workspace,inventory,setMessage,onIntake=nul
   };
   const files=result?[...result.files.map(row=>({...row,label:row.included?'拟纳入':row.reason})),...result.excluded.map(row=>({...row,label:'排除：'+row.reason}))]:[];
   const entry=result?.files.find(row=>row.path===result.selectedEntry);
-  return <section className="panel body-intake-panel"><div className="panel-title"><span>从本体接入</span><span className="muted">选文件／文件夹／ZIP → 识别 → 转换预览 → 确认接入</span></div>
+  return <><section className="panel body-intake-panel"><div className="panel-title"><span>从本体接入</span><span className="muted">选文件／文件夹／ZIP → 识别 → 转换预览 → 确认接入</span></div>
     <p>来源不必事先放进三仓。原件保留；包内文字只是导入内容，管理台不会执行其中的指令。</p>
     <div className="wizard-grid">
       <div className="wizard-field"><label>要接入什么</label><select value={type} onChange={event=>{setType(event.target.value);setResult(null);}}>{Object.entries(labels).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></div>
@@ -34,5 +35,5 @@ export function BodyIntakePanel({api,workspace,inventory,setMessage,onIntake=nul
       {entry?.preview && <details open><summary>入口正文预览{entry.previewTruncated?'（截断预览，完整正文保留在来源）':''}</summary><pre className="path-line">{entry.preview}</pre></details>}
       {!onIntake && <p className="muted">转换与接入表单正在按 P10–P15 接通；当前识别不会写入三仓或启动程序。</p>}
     </>}
-  </section>;
+  </section><ImportHistoryPanel api={api} workspace={workspace} platformId={platformId} setMessage={setMessage} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} /></>;
 }

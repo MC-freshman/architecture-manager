@@ -24,6 +24,7 @@ test('renderer domains stay split and write kinds remain centralized', () => {
   }
 
   assert.deepEqual(PLAN_WRITE_KINDS, [
+    'body-import','body-import-revert',
     'platform-scaffold',
     'platform-configuration',
     'platform-backend',

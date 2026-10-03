@@ -5,6 +5,14 @@ export function friendlyError(error) {
   const code = String(error?.message ?? error).replace(/^Error invoking remote method '[^']+':\s*/, '').replace(/^(?:Error:\s*)+/,'');
   const [key, ...details] = code.split(':');
   const hints = {
+    IMPORT_GIT_BASELINE_REQUIRED:'覆盖现有登记前需要可回滚的 Git 提交。请在仓库页提交计划涉及的现有配置，再重新预览；其它暂存内容不会混入。',
+    IMPORT_EXTERNAL_CHANGE:'导入目标已被其它操作改动，已保留现场。请重新读取记录，不能用旧计划覆盖新内容。',
+    IMPORT_BUSY:'这份导入仍在执行，请等待安全步骤收口或停止本次操作后再继续。',
+    IMPORT_ALREADY_REVERTED:'这份导入已撤销。冻结版本保留；需要再采用时请生成新的版本选择计划。',
+    IMPORT_PLATFORM_REQUIRED:'请选择已创建 bridge 的所属平台，本体、暂存与记录将归它的 runtime。',
+    IMPORT_PLACEMENT_INVALID:'软件安置计划与本次来源或平台不一致，请重新识别并生成组合计划。',
+    IMPORT_FOREIGN_REGISTRY_CHANGE:'这份导入试图同时修改其它资源登记，已停止；每次只修改当前资源。',
+    IMPORT_MUTATION_NOT_ALLOWED:'导入计划包含不属于当前资源或平台的写入路径，已停止。',
     INTAKE_SOURCE_REQUIRED:'请选择已有文件、文件夹或 ZIP 作为本体来源。',
     INTAKE_SOURCE_MISSING:'来源已不存在，请重新选择；管理台不会创建假的本体。',
     INTAKE_LINK_NOT_ALLOWED:'来源包含符号链接或目录联接，无法保证读写边界。请改选普通目录或普通文件。',

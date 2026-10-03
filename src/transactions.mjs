@@ -1,4 +1,5 @@
 import {restoreOwnedFiles} from './transactions/recovery.mjs';
+import {applyIntakePublication,verifyIntakePublication,revertIntakePublication,assertIntakeRevertPlan,verifyIntakeRevert} from './domains/intake/publication.mjs';
 import { validateRegistry } from './domains/resources/registry.mjs';
 import { parseJson } from './core/json.mjs';
 import { existsSync, readFileSync, mkdirSync, rmSync, statSync } from 'node:fs';
@@ -29,6 +30,8 @@ import { atomicWrite, makeId, output, requirePlan, saveCheckpoint, writeAudit } 
 
 export function applyPlan({ plan, afterText = null, actor = 'local-user', auditRoot = defaultAuditRoot(), now = new Date().toISOString(), failAfterCheckpoint = false, onProgress = () => {} }) {
   requirePlan(plan);
+  if(plan.kind==='body-import')return applyIntakePublication(plan,{actor,auditRoot,now,onProgress});
+  if(plan.kind==='body-import-revert')return revertIntakePublication(assertIntakeRevertPlan(plan),{actor,auditRoot,now});
   if (plan.kind === 'document-edit') return applyDocument(plan, afterText, { actor, auditRoot, now, failAfterCheckpoint });
   if (plan.kind === 'defect-book-edit') return applyDefectBook(plan, afterText || plan.payload?.afterText, { actor, auditRoot, now, failAfterCheckpoint });
   if (plan.kind?.startsWith('git-')) return applyGitTransaction({ plan, actor, auditRoot, now });
@@ -285,6 +288,8 @@ function applyIntegration(plan, afterText, context) {
 
 export function verifyPlanTarget({ plan }) {
   requirePlan(plan);
+  if(plan.kind==='body-import')return verifyIntakePublication({plan});
+  if(plan.kind==='body-import-revert')return verifyIntakeRevert(plan);
   if (plan.kind === 'platform-scaffold') return verifyPlatformScaffold(plan);
   if (plan.kind === 'platform-configuration') return verifyOnboardingConfig(plan);
   if (plan.kind === 'platform-runtime') return verifyOnboardingRuntime(plan);

@@ -78,5 +78,8 @@ contextBridge.exposeInMainWorld('architectureManager', Object.freeze({
   cancelTask: (...args) => ipcRenderer.invoke("task:cancel", ...args),
   selectBodySource: (...args) => ipcRenderer.invoke("intake:select-source", ...args),
   scanExternalBody: (...args) => ipcRenderer.invoke("intake:scan-source", ...args),
+  listIntakeJournals: (...args) => ipcRenderer.invoke("intake:history", ...args),
+  readIntakeJournal: (...args) => ipcRenderer.invoke("intake:journal", ...args),
+  previewIntakeRevertPlan: (...args) => ipcRenderer.invoke("intake:revert-plan", ...args),
   onTransactionProgress: (callback) => { const listener = (_event, progress) => callback(progress); ipcRenderer.on('transaction:progress', listener); return () => ipcRenderer.removeListener('transaction:progress', listener); }
 }));

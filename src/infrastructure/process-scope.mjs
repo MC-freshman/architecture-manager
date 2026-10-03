@@ -12,7 +12,7 @@ export function assertScopedActive() {const context=scope.getStore();if(context 
 export function runScopedProcess(executable,args,options={}) {
   const context=scope.getStore();
   // Only commands with no index/ref writes can bypass the child controller.
-  const readonlyGit=executable==='git' && ['status','rev-parse','diff','ls-files','cat-file','ls-tree','for-each-ref','rev-list'].some(command=>args.includes(command));
+  const readonlyGit=executable==='git' && ['status','rev-parse','diff','ls-files','cat-file','ls-tree','for-each-ref','rev-list','show'].some(command=>args.includes(command));
   if(context && processScopeCancelled(context) && !context.deferCancellation && context.mode!=='provider-session') throw Error('TASK_CANCELLED');
   if(!context || context.mode==='provider-session' || (!context.python && readonlyGit)) return execFileSync(executable,args,{windowsHide:true,shell:false,...options});
   if(!context.python && process.platform!=='win32') throw Error('RUNTIME_PYTHON_REQUIRED');
