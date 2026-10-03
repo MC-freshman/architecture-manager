@@ -87,6 +87,8 @@ export async function applyAutomaticOnboarding(plan, options = {}) {
       if (!journal.steps.length && JSON.stringify(candidate.payload) !== JSON.stringify(plan.payload.configuration.payload)) throw new Error('INTEGRATION_BASELINE_MISMATCH');
       return apply(candidate, applyOnboardingConfig);
     });
+    const selectedClient=load(targetPath(workspaceRoot,`${platformId}/bridge/client-adapter.json`));
+    if(selectedClient.sourceBody && selectedClient.kind==='manual-native')throw Error('CLIENT_ADAPTER_PENDING');
     await step('backend', async () => inputs.backendFields.distro ? apply(buildOnboardingBackendPlan({ workspaceRoot, platformId, fields: inputs.backendFields }), applyOnboardingBackend) : { status: 'existing-backend' });
     await step('environment', async () => {
       const snapshot = readOnboardingConfig({ workspaceRoot, platformId });

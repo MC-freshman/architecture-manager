@@ -3,6 +3,7 @@ import {friendlyError} from '../../presenter.mjs';
 import {ImportHistoryPanel} from './ImportHistoryPanel.jsx';
 import {AgentSkillBodyForm} from './AgentSkillBodyForm.jsx';
 import {ToolBodyForm} from './ToolBodyForm.jsx';
+import {PlatformBodyForm} from './PlatformBodyForm.jsx';
 const labels={agent:'智能体（agent）',skill:'技能（skill）',tool:'工具／工作流（tool）',platform:'平台客户端',software:'软件／现成 MCP'};
 const size=value=>value>=1024*1024*1024?(value/(1024*1024*1024)).toFixed(2)+' GB':value>=1024*1024?(value/(1024*1024)).toFixed(1)+' MB':value>=1024?(value/1024).toFixed(1)+' KB':value+' B';
 export function BodyIntakePanel({api,workspace,inventory,setMessage,setPlanPreview,setPlanPayload,onIntake=null}) {
@@ -35,7 +36,7 @@ export function BodyIntakePanel({api,workspace,inventory,setMessage,setPlanPrevi
       <ul className="finding-list">{files.slice(page*50,(page+1)*50).map(row=><li key={row.path}><code>{row.path}</code> · {row.bytes==null?'目录':size(row.bytes)} · {row.label}</li>)}</ul>
       <div className="git-actions"><button className="small-button" disabled={page===0} onClick={()=>setPage(value=>value-1)}>上一页</button><span>{page+1} / {Math.max(1,Math.ceil(files.length/50))} 页</span><button className="small-button" disabled={(page+1)*50>=files.length} onClick={()=>setPage(value=>value+1)}>下一页</button></div>
       {entry?.preview && <details open><summary>入口正文预览{entry.previewTruncated?'（截断预览，完整正文保留在来源）':''}</summary><pre className="path-line">{entry.preview}</pre></details>}
-      {!['agent','skill','tool'].includes(type) && <p className="muted">此类转换表单正在按 P13–P15 接通；当前识别不会启动程序。</p>}
+      {type==='software' && <p className="muted">软件转换与功能表单正在按 P14–P15 接通；当前识别不会启动程序。</p>}
     </>}
-  </section>{result?.selectedEntry && ['agent','skill'].includes(type) && <AgentSkillBodyForm api={api} workspace={workspace} platformId={platformId} intake={result} setMessage={setMessage} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} />}{result?.selectedEntry && type==='tool' && <ToolBodyForm api={api} workspace={workspace} platformId={platformId} intake={result} setMessage={setMessage} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} />}<ImportHistoryPanel api={api} workspace={workspace} platformId={platformId} setMessage={setMessage} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} /></>;
+  </section>{result?.selectedEntry && ['agent','skill'].includes(type) && <AgentSkillBodyForm api={api} workspace={workspace} platformId={platformId} intake={result} setMessage={setMessage} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} />}{result?.selectedEntry && type==='tool' && <ToolBodyForm api={api} workspace={workspace} platformId={platformId} intake={result} setMessage={setMessage} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} />}{result?.selectedEntry && type==='platform' && <PlatformBodyForm api={api} workspace={workspace} intake={result} inventory={inventory} setMessage={setMessage} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} />}<ImportHistoryPanel api={api} workspace={workspace} platformId={platformId} setMessage={setMessage} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} /></>;
 }

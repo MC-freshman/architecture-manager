@@ -5,8 +5,8 @@ import { targetPath } from './core/paths.mjs';
 import { readOnboardingConfig } from './onboarding-config.mjs';
 import { plannedFiles, applyGeneratedFiles, verifyFiles } from './transactions/onboarding-files.mjs';
 
-export function buildOnboardingGovernancePlan({ workspaceRoot, platformId, now = new Date().toISOString() }) {
-  const snapshot = readOnboardingConfig({ workspaceRoot, platformId });
+export function buildOnboardingGovernancePlan({ workspaceRoot, platformId,stagedConfig=null, now = new Date().toISOString() }) {
+  const snapshot = stagedConfig?{exists:true,config:stagedConfig}:readOnboardingConfig({ workspaceRoot, platformId });
   if (!snapshot.exists || !snapshot.config.platform) throw new Error('ONBOARDING_CONFIGURATION_REQUIRED');
   const marker = `<!-- architecture-manager-platform:${platformId} -->`;
   const end = `<!-- /architecture-manager-platform:${platformId} -->`;
@@ -22,9 +22,9 @@ export function buildOnboardingGovernancePlan({ workspaceRoot, platformId, now =
   const ignoreMarker = `# architecture-manager platform ${platformId}`;
   if (!ignore.includes(ignoreMarker)) files.push({ path: '.gitignore', content: `${ignore.trimEnd()}\n\n${ignoreMarker}\n!/${platformId}/\n/${platformId}/*\n!/${platformId}/bridge.json\n!/${platformId}/bridge/\n/${platformId}/bridge/**\n!/${platformId}/bridge/**/\n!/${platformId}/bridge/**/*.json\n!/${platformId}/bridge/**/*.md\n!/${platformId}/bridge/**/*.py\n!/${platformId}/bridge/**/*.mjs\n/${platformId}/bridge/**/credentials*\n/${platformId}/bridge/**/secrets*\n/${platformId}/bridge/**/.env*\n` });
   const planned = plannedFiles(workspaceRoot, files);
-  return { schema: 'architecture-manager-plan/v1', kind: 'platform-governance', planId: `governance-${randomUUID()}`, workspaceRoot, generatedAt: now, applyMode: 'confirmation-required', writePerformed: false, target: { platformId }, payload: { files: planned }, steps: planned.map((file) => ({ operation: 'register-platform-governance', target: file.path, oldSha256: file.beforeSha256, newSha256: file.newSha256 })), verification: ['five governance documents agree', 'only platform configuration texts enter Git', 'registration text does not predeclare certification'] };
+  return { schema: 'architecture-manager-plan/v1', kind: 'platform-governance', planId: `governance-${randomUUID()}`, workspaceRoot, generatedAt: now, applyMode: 'confirmation-required', writePerformed: false, target: { platformId,stagedConfig }, payload: { files: planned }, steps: planned.map((file) => ({ operation: 'register-platform-governance', target: file.path, oldSha256: file.beforeSha256, newSha256: file.newSha256 })), verification: ['five governance documents agree', 'only platform configuration texts enter Git', 'registration text does not predeclare certification'] };
 }
-export function applyOnboardingGovernance(plan, options) { return applyGeneratedFiles(plan, () => buildOnboardingGovernancePlan({ workspaceRoot: plan.workspaceRoot, platformId: plan.target.platformId, now: plan.generatedAt }), options); }
+export function applyOnboardingGovernance(plan, options) { return applyGeneratedFiles(plan, () => buildOnboardingGovernancePlan({ workspaceRoot: plan.workspaceRoot, platformId: plan.target.platformId,stagedConfig:plan.target.stagedConfig, now: plan.generatedAt }), options); }
 export const verifyOnboardingGovernance = verifyFiles;
 
 export function onboardingGitPaths(workspaceRoot, platformId) {

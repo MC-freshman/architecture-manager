@@ -1,6 +1,7 @@
 {
   "schema": "architecture-manager-operations/v1",
   "operations": {
+    "previewPlatformBody": {"channel":"intake:platform-body","phase":"plan","backend":"buildPlatformBodyPlan","argumentsStyle":"input","taskMode":"owned"},
     "readToolBodyEditor": {"channel":"intake:tool-editor","phase":"query","backend":"readToolBodyEditor","argumentsStyle":"input","taskMode":"owned"},
     "previewToolBody": {"channel":"intake:tool-plan","phase":"plan","backend":"buildToolBodyPlan","argumentsStyle":"input","taskMode":"owned"},
     "checkSharedBody": {"channel":"intake:body-smoke","phase":"execute","backend":"checkSharedBody","argumentsStyle":"input","taskMode":"owned"},
@@ -431,6 +432,7 @@
     }
   },
   "planKinds": [
+    "platform-body",
     "body-import",
     "body-import-revert",
     "platform-scaffold",

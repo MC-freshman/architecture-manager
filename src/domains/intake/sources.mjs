@@ -11,7 +11,7 @@ import {stableJson} from '../../core/json.mjs';
 import {assertScopedActive} from '../../infrastructure/process-scope.mjs';
 
 const types=new Set(['agent','skill','tool','platform','software']);
-function inventory(source,kind) {
+function inventory(source,kind,policy) {
   if(kind==='zip')return zipDirectory(source);
   if(kind==='file')return [{path:sourceRelative(basename(source)),bytes:statSync(source).size,directory:false}];
   const entries=[];
@@ -22,7 +22,7 @@ function inventory(source,kind) {
       if(metadata.isSymbolicLink())throw Error('INTAKE_LINK_NOT_ALLOWED');
       if(!metadata.isDirectory() && !metadata.isFile())throw Error('INTAKE_FILE_TYPE');
       entries.push({path:name,bytes:metadata.isFile()?metadata.size:0,directory:metadata.isDirectory()});
-      if(metadata.isDirectory() && !exclusionReason(name))walk(file,name+'/');
+      if(metadata.isDirectory() && !exclusionReason(name,[],policy))walk(file,name+'/');
     }
   };
   walk(source);assertUniqueSourcePaths(entries);return entries;
@@ -41,10 +41,10 @@ export async function scanExternalBody({workspaceRoot,platformId=null,sourcePath
   if(!types.has(type))throw Error('INTAKE_TYPE_INVALID');
   const source=externalSourcePath(sourcePath),metadata=lstatSync(source),sourceKind=metadata.isDirectory()?'directory':extname(source).toLowerCase()==='.zip'?'zip':'file';
   excludes=[...new Set(excludes.map(sourceRelative))].sort();
-  const entries=inventory(source,sourceKind),files=[],excluded=[],totalBytes=entries.filter(row=>!row.directory && !exclusionReason(row.path,excludes)).reduce((sum,row)=>sum+row.bytes,0);
+  const policy={runtimeBody:['platform','software'].includes(type)},entries=inventory(source,sourceKind,policy),files=[],excluded=[],totalBytes=entries.filter(row=>!row.directory && !exclusionReason(row.path,excludes,policy)).reduce((sum,row)=>sum+row.bytes,0);
   const intake={sourcePath:source,sourceKind};let bytesDone=0,previewBudget=128*1024;
   for(const [index,row] of entries.entries()) {
-    assertScopedActive();const excludedReason=exclusionReason(row.path,excludes);
+    assertScopedActive();const excludedReason=exclusionReason(row.path,excludes,policy);
     if(excludedReason){excluded.push({path:row.path,reason:excludedReason,directory:row.directory});continue;}
     if(row.directory)continue;
     const hash=createHash('sha256'),chunks=[];let bytes=0,head=Buffer.alloc(0),crcTextError=false,decoder=new TextDecoder('utf-8',{fatal:true}),secretTail='',sensitive=false,previewBytes=0;

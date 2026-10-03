@@ -156,7 +156,7 @@ export async function applyIntakePublication(plan,{actor='local-user',auditRoot=
           const {listSoftwareRecoveries}=await import('../../software-recovery.mjs');
           const previous=listSoftwareRecoveries({workspaceRoot:plan.workspaceRoot,auditRoot}).find(row=>row.action==='software-import' && row.target===placement.target.path);
           if(!previous)throw Error('IMPORT_EXTERNAL_CHANGE');journal.placement={status:'already-staged',checkpointPath:previous.checkpointPath};
-        } else journal.placement=body.applySoftwareImport({plan:placement},{actor,auditRoot,now,onProgress});
+        } else journal.placement=await body.applySoftwareImport({plan:placement},{actor,auditRoot,now,onProgress});
         journal.status='body-staged';journalWrite(directory,journal);
       }
       if(!body.verifySoftwareImport({plan:placement}).ok)throw Error('IMPORT_EXTERNAL_CHANGE');

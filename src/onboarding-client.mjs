@@ -1,11 +1,12 @@
 import {parseJson as parseJsonText} from './core/json.mjs';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join,relative,extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { targetPath } from './core/paths.mjs';
-import { sha256 } from './core/hash.mjs';
+import { sha256,sha256File } from './core/hash.mjs';
+import {assertScopedActive} from './infrastructure/process-scope.mjs';
 import { readOnboardingConfig } from './onboarding-config.mjs';
 import { plannedFiles, applyGeneratedFiles, verifyFiles } from './transactions/onboarding-files.mjs';
 import { atomicWrite } from './transactions/kernel.mjs';
@@ -23,7 +24,9 @@ export function buildOnboardingClientPlan({ workspaceRoot, platformId, now = new
   const base = `${platformId}/bridge/manager-client`;
   const files = ['mcp_service.py', 'cli_client.py'].map((name) => ({ path: `${base}/${name}`, content: readFileSync(fileURLToPath(new URL(`./runtime/${name}`, import.meta.url)), 'utf8') }));
   const service = { executable: python, args: ['-B', targetPath(workspaceRoot, `${base}/mcp_service.py`), targetPath(workspaceRoot, snapshot.configPath)] };
-  const descriptor = { schema: 'architecture-manager-client/v1', platformId, kind: 'cli', executable: python, args: ['-B', targetPath(workspaceRoot, `${base}/cli_client.py`), targetPath(workspaceRoot, `${platformId}/bridge/client-adapter.json`)], server: service, preset: 'architecture-json-cli', probeTool: 'architecture_probe', nativeVerified: false, installedClient: true };
+  let descriptor = { schema: 'architecture-manager-client/v1', platformId, kind: 'cli', executable: python, args: ['-B', targetPath(workspaceRoot, `${base}/cli_client.py`), targetPath(workspaceRoot, `${platformId}/bridge/client-adapter.json`)], server: service, preset: 'architecture-json-cli', probeTool: 'architecture_probe', nativeVerified: false, installedClient: true };
+  const previous=targetPath(workspaceRoot,`${platformId}/bridge/client-adapter.json`);
+  if(existsSync(previous)) {const native=load(previous);if(native.sourceBody){descriptor={...native,server:service};if(extname(native.sourceBody.path)==='.py')descriptor.executable=python;}}
   files.push({ path: `${platformId}/bridge/client-adapter.json`, content: json(descriptor) }, { path: `${base}/mcp-client-registration.json`, content: json({ mcpServers: { architecture: { command: service.executable, args: service.args } }, notes: 'Import this into a compatible native client. Export is not evidence of native registration.' }) });
   const planned = plannedFiles(workspaceRoot, files);
   return { schema: 'architecture-manager-plan/v1', kind: 'platform-client', planId: `client-${randomUUID()}`, workspaceRoot, generatedAt: now, applyMode: 'confirmation-required', writePerformed: false, target: { platformId }, payload: { files: planned }, steps: planned.map((file) => ({ operation: 'install-client-entry', target: file.path, oldSha256: file.beforeSha256, newSha256: file.newSha256 })), verification: ['real independent CLI client connects to registered MCP service', 'challenge binds platform config and release seals', 'native vendor registration remains separate'] };
@@ -48,6 +51,10 @@ export function validateClientReceipt(value, expected) {
 
 export async function probeOnboardingClient({ workspaceRoot, platformId }, { registerCancel = () => {} } = {}) {
   const adapter = load(targetPath(workspaceRoot, `${platformId}/bridge/client-adapter.json`));
+  if(adapter.sourceBody) {
+    const body=targetPath(workspaceRoot,relative(workspaceRoot,adapter.sourceBody.path)),own=relative(targetPath(workspaceRoot,`${platformId}/runtime`),body);
+    if(own.startsWith('..') || /^[A-Za-z]:/.test(own) || sha256File(body,{onBlock:assertScopedActive})!==adapter.sourceBody.entrySha256)throw Error('CLIENT_BODY_DRIFT');
+  }
   if (adapter.kind === 'manual-native') return { platformId, status: 'waiting-user', issues: ['原生客户端尚未提交可验证回执；请选择已支持的 CLI 入口或导入 MCP 配置后测试。'], nativeVendorClientVerified: false };
   if (!['cli', 'mcp-stdio'].includes(adapter.kind)) throw new Error('CLIENT_ADAPTER_PENDING');
   const snapshot = readOnboardingConfig({ workspaceRoot, platformId });
@@ -76,7 +83,7 @@ export async function probeOnboardingClient({ workspaceRoot, platformId }, { reg
   const receipt = parseJsonText(response.stdout); validateClientReceipt(receipt, expected);
   const fresh = clientBinding(workspaceRoot, platformId);
   if (fresh.configSha256 !== expected.configSha256 || fresh.versionsSha256 !== expected.versionsSha256 || fresh.adapterSha256 !== expected.adapterSha256) throw new Error('INTEGRATION_BASELINE_MISMATCH');
-  const result = { schema: 'architecture-manager-client-check/v1', status: 'passed', ...expected, receipt, checkedAt: new Date().toISOString(), nativeVendorClientVerified: false, writePerformed: true };
+  const result = { schema: 'architecture-manager-client-check/v1', status: 'passed', ...expected, receipt, checkedAt: new Date().toISOString(), nativeVendorClientVerified: false,importedClientVerified:Boolean(adapter.sourceBody && adapter.kind==='cli' && adapter.sourceBody.mode==='json-cli'),bodyEntrySha256:adapter.sourceBody?.entrySha256 || null, writePerformed: true };
   const evidencePath = join(directory, `client-${randomUUID()}.json`);
   atomicWrite(evidencePath, json(result), randomUUID());
   atomicWrite(targetPath(workspaceRoot, `${platformId}/runtime/maintenance/manager-onboarding/client-latest.json`), json(result), randomUUID()); return { ...result, evidencePath };

@@ -1,4 +1,5 @@
 import {parseJson as parseJsonText} from './core/json.mjs';
+import {applyRuntimeBody,verifyRuntimeBody} from './domains/intake/runtime-body.mjs';
 import {removeOwnedDirectory} from './transactions/recovery.mjs';
 import {sha256} from './core/hash.mjs';
 import { createHash } from 'node:crypto';
@@ -95,6 +96,7 @@ export function buildSoftwareImportPlan({ workspaceRoot, platformId, softwareId,
 }
 
 export function applySoftwareImport({ plan }, { actor = 'local-user', auditRoot = defaultAuditRoot(), now = new Date().toISOString(), onProgress = () => {}, failAfterCheckpoint = false } = {}) {
+  if(plan?.payload?.intake)return applyRuntimeBody({plan},{actor,auditRoot,onProgress});
   if (plan?.kind !== 'software-import') throw new Error('INVALID_SOFTWARE_IMPORT_PLAN');
   const fresh = buildSoftwareImportPlan({ workspaceRoot: plan.workspaceRoot, platformId: plan.target.platformId, softwareId: plan.target.softwareId, sourcePath: plan.target.source, intakeKind: plan.target.intakeKind, now: plan.generatedAt });
   if (JSON.stringify(fresh.rows) !== JSON.stringify(plan.rows) || fresh.target.path !== plan.target.path || fresh.target.backup !== plan.target.backup) throw new Error('SOFTWARE_SOURCE_CHANGED');
@@ -146,6 +148,7 @@ export function applySoftwareImport({ plan }, { actor = 'local-user', auditRoot 
 }
 
 export function verifySoftwareImport({ plan }) {
+  if(plan?.payload?.intake)return verifyRuntimeBody({plan});
   if (plan?.kind !== 'software-import') throw new Error('INVALID_SOFTWARE_IMPORT_PLAN');
   const backup = join(plan.target.backup, 'payload');
   try {
