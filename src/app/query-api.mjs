@@ -2,6 +2,8 @@
 export {scanExternalBody} from '../domains/intake/sources.mjs';
 export {readBodyEditor,listBodyDependencies} from '../domains/intake/shared-body.mjs';
 export {readToolBodyEditor} from '../domains/intake/tool-body.mjs';
+export {readSoftwareBodyActions} from '../domains/intake/software-body.mjs';
+export {listRuntimeBodies} from '../domains/intake/runtime-body.mjs';
 export {listIntakeJournals,readIntakeJournal} from '../domains/intake/journals.mjs';
 export { inspectPlatformDirectory, scanWorkspace } from '../inventory.mjs';
 export { inspectRegistration, readCatalogEntry, readSkillContent } from '../catalog.mjs';

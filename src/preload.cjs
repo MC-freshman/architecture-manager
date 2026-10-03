@@ -1,6 +1,11 @@
 // Generated from app/operations.json; sandbox preload must remain standalone.
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('architectureManager', Object.freeze({
+  listRuntimeBodies: (...args) => ipcRenderer.invoke("intake:runtime-bodies", ...args),
+  previewSoftwareBodyPlacement: (...args) => ipcRenderer.invoke("intake:software-placement", ...args),
+  previewSoftwareBody: (...args) => ipcRenderer.invoke("intake:software-body", ...args),
+  readSoftwareBodyActions: (...args) => ipcRenderer.invoke("software:body-actions", ...args),
+  previewSoftwareCommand: (...args) => ipcRenderer.invoke("plan:software-command", ...args),
   previewPlatformBody: (...args) => ipcRenderer.invoke("intake:platform-body", ...args),
   readToolBodyEditor: (...args) => ipcRenderer.invoke("intake:tool-editor", ...args),
   previewToolBody: (...args) => ipcRenderer.invoke("intake:tool-plan", ...args),

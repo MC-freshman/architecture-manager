@@ -1,5 +1,6 @@
 import {restoreOwnedFiles} from './transactions/recovery.mjs';
 import {applyPlatformBody,verifyPlatformBody} from './domains/intake/platform-body.mjs';
+import {applySoftwareCommand,verifySoftwareCommand} from './domains/software/actions.mjs';
 import {applyIntakePublication,verifyIntakePublication,revertIntakePublication,assertIntakeRevertPlan,verifyIntakeRevert} from './domains/intake/publication.mjs';
 import { validateRegistry } from './domains/resources/registry.mjs';
 import { parseJson } from './core/json.mjs';
@@ -32,6 +33,7 @@ import { atomicWrite, makeId, output, requirePlan, saveCheckpoint, writeAudit } 
 export function applyPlan({ plan, afterText = null, actor = 'local-user', auditRoot = defaultAuditRoot(), now = new Date().toISOString(), failAfterCheckpoint = false, onProgress = () => {} }) {
   requirePlan(plan);
   if(plan.kind==='platform-body')return applyPlatformBody(plan,{actor,auditRoot,onProgress});
+  if(plan.kind==='software-command')return applySoftwareCommand(plan,{actor,auditRoot});
   if(plan.kind==='body-import')return applyIntakePublication(plan,{actor,auditRoot,now,onProgress});
   if(plan.kind==='body-import-revert')return revertIntakePublication(assertIntakeRevertPlan(plan),{actor,auditRoot,now});
   if (plan.kind === 'document-edit') return applyDocument(plan, afterText, { actor, auditRoot, now, failAfterCheckpoint });
@@ -289,6 +291,7 @@ function applyIntegration(plan, afterText, context) {
 }
 
 export function verifyPlanTarget({ plan }) {
+  if(plan.kind==='software-command')return verifySoftwareCommand(plan);
   if(plan.kind==='platform-body')return verifyPlatformBody(plan);
   requirePlan(plan);
   if(plan.kind==='body-import')return verifyIntakePublication({plan});

@@ -36,7 +36,7 @@ function assertChange(plan,change) {
   const pointer=`${repository}/${prefix}${resourceId}/current.json`,catalog=plan.target.settings?.skillCatalogPath || `tool/_registry/skills-${resourceId}.json`;
   if(![pointer,`${repository}/registry.json`,...(plan.target.type==='skill'?[catalog]:[])].includes(change.path) && !change.path.startsWith(`${platformId}/bridge/`))throw Error('IMPORT_MUTATION_NOT_ALLOWED');
   targetPath(plan.workspaceRoot,change.path);
-  const next=JSON.parse(change.content);
+  const next=change.path.endsWith('.json')?JSON.parse(change.content):null;
   if(change.path===pointer && (next.id!==resourceId || next.version!==version || next.hashManifest!=='SHA256SUMS'))throw Error('IMPORT_POINTER_INVALID');
   if(change.path.endsWith('/registry.json')) {
     const previous=JSON.parse(change.before),section=plan.target.type==='agent'?'agents':plan.target.type==='skill'?'skills':plan.target.type==='software'?'software':'workflows',ids=new Set(plan.target.type==='skill'?[resourceId,'skills-'+resourceId]:[resourceId]);
@@ -153,9 +153,8 @@ export async function applyIntakePublication(plan,{actor='local-user',auditRoot=
       if(!journal.placement) {
         if(fs.existsSync(placement.target.path)) {
           if(!body.verifySoftwareImport({plan:placement}).ok)throw Error('IMPORT_EXTERNAL_CHANGE');
-          const {listSoftwareRecoveries}=await import('../../software-recovery.mjs');
-          const previous=listSoftwareRecoveries({workspaceRoot:plan.workspaceRoot,auditRoot}).find(row=>row.action==='software-import' && row.target===placement.target.path);
-          if(!previous)throw Error('IMPORT_EXTERNAL_CHANGE');journal.placement={status:'already-staged',checkpointPath:previous.checkpointPath};
+          if(placement.payload?.intake)journal.placement=await body.applySoftwareImport({plan:placement},{actor,auditRoot,now,onProgress});
+          else {const {listSoftwareRecoveries}=await import('../../software-recovery.mjs');const previous=listSoftwareRecoveries({workspaceRoot:plan.workspaceRoot,auditRoot}).find(row=>row.action==='software-import' && row.target===placement.target.path);if(!previous)throw Error('IMPORT_EXTERNAL_CHANGE');journal.placement={status:'already-staged',checkpointPath:previous.checkpointPath};}
         } else journal.placement=await body.applySoftwareImport({plan:placement},{actor,auditRoot,now,onProgress});
         journal.status='body-staged';journalWrite(directory,journal);
       }

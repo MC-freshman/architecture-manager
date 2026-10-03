@@ -1,4 +1,7 @@
 import {runDomainTask,cancelDomainTask,cancelAllDomainTasks} from './infrastructure/tasks.mjs';
+import {buildSoftwareBodyPlacementPlan,buildSoftwareBodyPlan,readSoftwareBodyActions} from './domains/intake/software-body.mjs';
+import {buildSoftwareCommandPlan} from './domains/software/actions.mjs';
+import {listRuntimeBodies} from './domains/intake/runtime-body.mjs';
 import {parseJson as parseJsonText} from './core/json.mjs';
 import { operationRegistrar } from './electron/operation-registry.mjs';
 import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron';
@@ -109,7 +112,7 @@ function registerIpc() {
       case 'clone': parameters=[{plan:input.plan}];break;
       default: parameters=args;
     }
-    const mode=input?.plan?.kind==='software-launch'?'provider-session':declaration.taskMode;
+    const mode=input?.plan?.kind==='software-launch' || input?.plan?.kind==='software-command' && input.plan.target.operation==='open'?'provider-session':declaration.taskMode;
     return lifecycle.track(async()=>{
       const result=await runDomainTask({method:declaration.backend,args:parameters,workspaceRoot,platformId:input?.platformId || input?.plan?.target?.platformId,jobId:metadata.jobId,workspaceSession:metadata.workspaceSession,mode,phase:declaration.phase,onProgress:progress=>event.sender.send('transaction:progress',progress)});
       if(declaration.backend==='scanWorkspace') rememberWorkspace(result.workspaceRoot);
@@ -174,6 +177,11 @@ function registerIpc() {
   handleOperation('software:health', (event,input) => owned(input,registerCancel=>healthSoftware(input.workspaceRoot,input.softwareId,input.platformId,{registerCancel,onProgress:progress=>event.sender.send('transaction:progress',progress)})));
   handleOperation('plan:software', (_event, input) => buildSoftwareLaunchPlan(input));
   handleOperation('plan:software-import', (_event, input) => buildSoftwareImportPlan(input));
+  handleOperation('intake:software-placement',(_event,input)=>buildSoftwareBodyPlacementPlan(input));
+  handleOperation('intake:software-body',(_event,input)=>buildSoftwareBodyPlan(input));
+  handleOperation('software:body-actions',(_event,input)=>readSoftwareBodyActions(input));
+  handleOperation('intake:runtime-bodies',(_event,input)=>listRuntimeBodies(input));
+  handleOperation('plan:software-command',(_event,input)=>buildSoftwareCommandPlan(input));
   handleOperation('software:intakes', (_event, input) => listSoftwareIntakes(input));
   handleOperation('plan:software-recipe', (_event, input) => buildSoftwareRecipePlan(input));
   handleOperation('software:recoveries', (_event, input) => listSoftwareRecoveries(input));

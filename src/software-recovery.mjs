@@ -19,6 +19,7 @@ export function listSoftwareRecoveries({ workspaceRoot, auditRoot = defaultAudit
   const rows = events(auditRoot).filter((item) => item.workspaceRoot === root && ['software-import', 'software-recipe-publish'].includes(item.action));
   const reverted = new Set(rows.filter((item) => item.status === 'reverted').map((item) => item.checkpointPath));
   return rows.filter((item) => ['applied', 'published-version-only', 'published-pending-verification'].includes(item.status) && item.checkpointPath && !reverted.has(item.checkpointPath))
+    .filter(item=>{try{return parseJsonText(readFileSync(item.checkpointPath,'utf8')).schema!=='architecture-manager-runtime-body-checkpoint/v1';}catch{return false;}})
     .slice(-10).reverse().map((item) => ({ action: item.action, status: item.status, target: item.target, checkpointPath: item.checkpointPath, occurredAt: item.occurredAt }));
 }
 

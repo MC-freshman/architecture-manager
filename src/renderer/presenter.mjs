@@ -5,6 +5,15 @@ export function friendlyError(error) {
   const code = String(error?.message ?? error).replace(/^Error invoking remote method '[^']+':\s*/, '').replace(/^(?:Error:\s*)+/,'');
   const [key, ...details] = code.split(':');
   const hints = {
+    INTAKE_DISK_SPACE_REQUIRED:'当前剩余空间不足以完成备份和真实恢复，请释放空间或选择另一个工作区后再继续。已有安全步骤和原件保留。',
+    SOFTWARE_GUI_EXECUTABLE_REQUIRED:'GUI 会话需要已安装的 EXE 入口；脚本或其它运行时请先选择 CLI 模式或明确的专用连接器。',
+    SOFTWARE_RUNTIME_REQUIRED:'这个脚本需要解释器或运行程序，请选择它自己的 Python、Node 或 Java 程序。',
+    SOFTWARE_ACTION_INVALID:'动作名称、参数或权限不完整，请检查动作表单；动作名称不能重复。',
+    SOFTWARE_UNSAFE_PROBE:'只有明确的无写入、无网络、无凭据动作可以在这里做只读测试；其它动作保持待验证。',
+    SOFTWARE_PROBE_ARGUMENT_REQUIRED:'只读测试缺少必要参数，请填写测试值或暂时保留待验证。',
+    SOFTWARE_ARGUMENT_INVALID:'参数不符合这个动作已冻结的输入要求，请核对类型与必填项。',
+    SOFTWARE_EXECUTION_UNKNOWN:'上次启动中断在发出请求之后，不能安全重复启动。请先检查会话状态，确认后再生成新的计划。',
+    INSTALLER_NOT_INSTALLED:'这份内容是安装包，当前只做了安置。请完成安装后选择实际安装目录或程序，再接入配方。',
     AGENT_MAIN_WORKFLOW_REQUIRED:'请选择一条主工作流，并将它勾选进精确依赖。专家正文需要这条工作流才能被调用。',
     TOOL_DEFINITION_KIND_REQUIRED:'这是治理组件而非用户工作流，请通过对应的组件升级方案维护；普通阶段编辑器不能改它。',
     RESOURCE_PROMPT_ANCHOR_INVALID:'阶段正文缺失、重复或没有正确闭合。请使用阶段表单生成正文，或补齐来源定义引用的阶段。',

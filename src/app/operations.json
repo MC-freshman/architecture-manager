@@ -1,6 +1,11 @@
 {
   "schema": "architecture-manager-operations/v1",
   "operations": {
+    "listRuntimeBodies":{"channel":"intake:runtime-bodies","phase":"query","backend":"listRuntimeBodies","argumentsStyle":"input","taskMode":"owned"},
+    "previewSoftwareBodyPlacement": {"channel":"intake:software-placement","phase":"plan","backend":"buildSoftwareBodyPlacementPlan","argumentsStyle":"input","taskMode":"owned"},
+    "previewSoftwareBody": {"channel":"intake:software-body","phase":"plan","backend":"buildSoftwareBodyPlan","argumentsStyle":"input","taskMode":"owned"},
+    "readSoftwareBodyActions": {"channel":"software:body-actions","phase":"query","backend":"readSoftwareBodyActions","argumentsStyle":"input","taskMode":"owned"},
+    "previewSoftwareCommand": {"channel":"plan:software-command","phase":"plan","backend":"buildSoftwareCommandPlan","argumentsStyle":"input","taskMode":"owned"},
     "previewPlatformBody": {"channel":"intake:platform-body","phase":"plan","backend":"buildPlatformBodyPlan","argumentsStyle":"input","taskMode":"owned"},
     "readToolBodyEditor": {"channel":"intake:tool-editor","phase":"query","backend":"readToolBodyEditor","argumentsStyle":"input","taskMode":"owned"},
     "previewToolBody": {"channel":"intake:tool-plan","phase":"plan","backend":"buildToolBodyPlan","argumentsStyle":"input","taskMode":"owned"},
@@ -432,6 +437,7 @@
     }
   },
   "planKinds": [
+    "software-command",
     "platform-body",
     "body-import",
     "body-import-revert",

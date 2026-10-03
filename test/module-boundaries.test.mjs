@@ -16,6 +16,8 @@ test('application boundary exposes the complete IPC domain surface', () => {
     'checkSharedBody',
     'readToolBodyEditor','buildToolBodyPlan',
     'buildPlatformBodyPlan',
+    'buildSoftwareBodyPlacementPlan','buildSoftwareBodyPlan','readSoftwareBodyActions','buildSoftwareCommandPlan',
+    'listRuntimeBodies',
     'listIntakeJournals','readIntakeJournal','buildIntakeRevertPlan',
     'applyPlan', 'applyWorkspaceClone', 'buildDefectBookEditPlan', 'buildDocsSite', 'buildDocumentPlan', 'buildGitPlan', 'buildIntegrationPlan',
     'buildPlatformViewPlan', 'buildRegistryPlan', 'buildReleasePlan', 'buildResourcePointerPlan',

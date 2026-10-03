@@ -1,5 +1,6 @@
 import {parseJson as parseJsonText} from './core/json.mjs';
 import {applyRuntimeBody,verifyRuntimeBody} from './domains/intake/runtime-body.mjs';
+import {renameOwnedDirectory} from './infrastructure/filesystem.mjs';
 import {removeOwnedDirectory} from './transactions/recovery.mjs';
 import {sha256} from './core/hash.mjs';
 import { createHash } from 'node:crypto';
@@ -124,9 +125,9 @@ export function applySoftwareImport({ plan }, { actor = 'local-user', auditRoot 
     const manifest = { schema: 'architecture-manager-software-backup/v1', platformId: plan.target.platformId, softwareId: plan.target.softwareId, sourceName: basename(source), intakeKind, files: plan.rows, restoreDrill: { performed: true, verifiedFiles: plan.rows.length, at: new Date().toISOString() }, target };
     backupManifestText = `${JSON.stringify(manifest, null, 2)}\n`;
     writeFileSync(join(backupStage, 'MANIFEST.json'), backupManifestText, { flag: 'wx' });
-    renameSync(backupStage, backup);
+    renameOwnedDirectory(plan.workspaceRoot,backupStage,backup);
     backupCommitted = true;
-    renameSync(bodyStage, target);
+    renameOwnedDirectory(plan.workspaceRoot,bodyStage,target);
     bodyCommitted = true;
     assertRows(target, plan.rows);
     const audit = writeAudit({ auditRoot, transactionId, plan, actor, action: 'software-import', status: 'applied', target, newSha256: createHash('sha256').update(JSON.stringify(plan.rows)).digest('hex'), checkpointSha256: checkpoint.sha256, checkpointPath: checkpoint.path, writePerformed: true, now });

@@ -9,7 +9,7 @@ import {hasSensitiveLiteral} from './policy.mjs';
 import {sha256} from '../../core/hash.mjs';
 
 export const encode=value=>JSON.stringify(value,null,2)+'\n';
-const sections={agent:['agent','agents',''],skill:['tool','skills','skills/'],tool:['tool','workflows','']};
+const sections={agent:['agent','agents',''],skill:['tool','skills','skills/'],tool:['tool','workflows',''],software:['software','software','']};
 const ID=/^[a-z0-9][a-z0-9._-]*$/,SEMVER=/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 export function assertBodyIdentity(id,version) {if(!ID.test(id || ''))throw Error('RELEASE_RESOURCE_ID_INVALID');if(!SEMVER.test(version || ''))throw Error('RELEASE_SEMVER_INVALID');}
 export function sharedRegistration(root,type,id,version,displayName) {

@@ -20,9 +20,9 @@ test('shared sources separate caches, credentials, binaries and invalid encoding
   const result=await scanExternalBody({workspaceRoot:f.workspaceRoot,sourcePath:source,type:'agent',excludes:['custom']});assert(result.excluded.some(row=>row.path==='node_modules'));assert(result.excluded.some(row=>row.path==='.env'));assert.equal(result.files.find(row=>row.path==='config.json').preview,'');assert.equal(result.files.find(row=>row.path==='config.json').included,false);assert.equal(result.files.find(row=>row.path==='bad.md').included,false);assert.equal(result.files.find(row=>row.path==='program.exe').included,false);await assertIntakeUnchanged(result);
   assert.equal(existsSync(join(f.workspaceRoot,'agent')),false);assert.match(friendlyError(Error("Error invoking remote method 'intake:scan-source': Error: INTAKE_SOURCE_CHANGED")),/重新识别/);
 });
-test('source edits invalidate intake while a real software body has explicit three-copy peak',async t=>{
+test('source edits invalidate intake while restored runtime placement has explicit two-copy peak',async t=>{
   const f=fixture(t),source=join(f.root,'sample.exe');writeFileSync(source,Buffer.from('MZ\0owned-test-body'));
-  const value=await scanExternalBody({workspaceRoot:f.workspaceRoot,sourcePath:source,type:'software'});assert.equal(value.selectedEntry,'sample.exe');assert.equal(value.space.peakBytes,value.bodyBytes*3);writeFileSync(source,'MZ\0changed');await assert.rejects(assertIntakeUnchanged(value),/INTAKE_SOURCE_CHANGED/);
+  const value=await scanExternalBody({workspaceRoot:f.workspaceRoot,sourcePath:source,type:'software'});assert.equal(value.selectedEntry,'sample.exe');assert.equal(value.space.peakBytes,value.bodyBytes*2);writeFileSync(source,'MZ\0changed');await assert.rejects(assertIntakeUnchanged(value),/INTAKE_SOURCE_CHANGED/);
 });
 test('ZIP traversal, links, aliases, corrupt payloads and file/directory collisions are rejected before extraction',async t=>{
   const f=fixture(t);

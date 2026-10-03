@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
+import {SoftwareActionsPanel} from '../features/software/SoftwareActionsPanel.jsx';
 
-export function SoftwarePanel({ api, workspace, inventory, software, softwareResults, checkSoftware, previewSoftwareLocation, previewSoftware, previewSoftwareImport, previewSoftwareRecipe, previewSoftwareRevert, previewSoftwareConnectorLaunch, setMessage }) {
+export function SoftwarePanel({ api, workspace, inventory, software, softwareResults, checkSoftware, previewSoftwareLocation, previewSoftware, previewSoftwareImport, previewSoftwareRecipe, previewSoftwareRevert, previewSoftwareConnectorLaunch, setMessage, setPlanPreview, setPlanPayload }) {
   const [platformId, setPlatformId] = useState('');
+  const [actionId,setActionId]=useState('');
   const [softwareId, setSoftwareId] = useState('');
   const [intakeKind, setIntakeKind] = useState('portable-file');
   const [sourcePath, setSourcePath] = useState('');
@@ -34,7 +36,7 @@ export function SoftwarePanel({ api, workspace, inventory, software, softwareRes
       setSourcePath(selected);
     } catch (error) { setMessage(`选择文件失败：${String(error?.message ?? error)}`); }
   };
-  return <section className="panel software-panel"><div className="panel-title"><span>软件中心</span><span className="muted">recipe / connector</span></div><div className="rows">
+  return <><section className="panel software-panel"><div className="panel-title"><span>软件中心</span><span className="muted">recipe / connector</span></div><div className="rows">
     {recoveries.length > 0 && <div className="software-intake"><strong>最近可撤销的软件操作</strong>{recoveries.map((item) => <div className="catalog-row" key={item.checkpointPath}><span>{item.action === 'software-import' ? '安置本体' : '发布配方'} · {item.target}<small className="path-line">{item.occurredAt}</small></span><button className="small-button" onClick={() => previewSoftwareRevert(item)}>{item.action === 'software-import' ? '预览撤销安置' : '预览停用发布'}</button></div>)}</div>}
     {inventory && <div className="software-intake">
       <div className="integration-help">添加新软件：选择所属平台和来源。安置会生成备份与本体副本；大软件请预留空间。共享 software 仓只放配方。</div>
@@ -48,7 +50,7 @@ export function SoftwarePanel({ api, workspace, inventory, software, softwareRes
       <div className="resource-actions"><button className="small-button" onClick={chooseSource}>选择文件或目录</button><button className="small-button primary-small" disabled={!workspace || !platformId || !sourcePath || !/^[a-z0-9][a-z0-9._-]*$/.test(softwareId)} onClick={() => previewSoftwareImport({ platformId, softwareId, sourcePath, intakeKind })}>预览安置与备份计划</button></div>
     </div>}
     {inventory && <div className="software-intake">
-      <div className="integration-help">发布配方：仅支持已安置的 Windows 便携 CLI 的只读“版本查询”；须选已配置新版连接器的平台。GUI、HTTP/MCP 和其它操作仍待适配。</div>
+      <div className="integration-help">旧版兼容入口：只发布 Windows CLI 版本查询。完整目录／ZIP、具体功能和 GUI 会话请使用“导入本体”页。</div>
       <div className="integration-form">
         <label>已安置的软件<select value={recipeId} onChange={(event) => { setRecipeId(event.target.value); setBodyName(''); }}><option value="">选择软件</option>{intakes.map((item) => <option key={item.id} value={item.id}>{item.id}{item.restored ? '' : ' · 备份待核验'}</option>)}</select></label>
         <label>程序入口<select value={bodyName} onChange={(event) => setBodyName(event.target.value)}><option value="">选择 exe</option>{(selectedIntake?.files || []).filter((name) => name.toLowerCase().endsWith('.exe')).map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
@@ -59,7 +61,7 @@ export function SoftwarePanel({ api, workspace, inventory, software, softwareRes
       </div>
       <div className="resource-actions"><button className="small-button primary-small" disabled={!selectedPlatform?.softwareConnector?.ready || !selectedIntake?.restored || selectedIntake?.intakeKind === 'installer' || !bodyName || !displayName.trim() || !upstreamVersion.trim()} onClick={() => previewSoftwareRecipe({ platformId, softwareId: recipeId, bodyName, displayName, upstreamVersion, license, versionFlag })}>询问版本并预览配方</button></div>
     </div>}
-    {software.map((item) => { const result = softwareResults[platformId+'/'+item.id]; const bodyPath = selectedPlatform?.softwareConnector?.bodies?.[item.id]; return <div className="software-row" key={item.id}><div className="software-main"><span className="row-name">{item.displayName}</span><span className="resource-repo">{item.id} · {item.version}</span><div className="software-meta">{item.transport || '未声明'} · {item.bodyExists === true ? '本体已发现' : item.bodyExists === false ? '本体未发现' : '路径待核对'} · {item.snapshotFrozen ? '快照已冻结' : '快照待核验'}</div><div className="software-path"><strong>绝对路径：</strong>{bodyPath || (platformId ? '该平台未绑定本体' : '请先选择所属平台')}<br /><strong>工作区相对配方：</strong>{item.versionRoot}<br /><strong>入口模板（未解析，不是可直接执行的命令）：</strong>{item.entrypoint || item.versionCall?.[0] || '未声明'}{item.endpoint && <><br /><strong>端点：</strong>{item.endpoint}</>}</div></div><div className="resource-actions software-actions"><span className={result?.status === 'PASS' || result?.status === 'READY' ? 'pill good' : result ? 'pill warn' : 'pill'}>{result?.status || '未检查'}</span><button className="small-button" disabled={!platformId} onClick={() => checkSoftware(item,platformId)}>健康检查</button><button className="small-button" disabled={!platformId} onClick={() => previewSoftwareConnectorLaunch(item, platformId)}>经连接器启动</button><button className="small-button" disabled={!bodyPath} onClick={() => previewSoftwareLocation(item, platformId)}>打开位置</button><button className="small-button" onClick={() => previewSoftware(item)}>查看启动条件</button></div></div>; })}
+    {software.map((item) => { const result = softwareResults[platformId+'/'+item.id]; const bodyPath = selectedPlatform?.softwareConnector?.bodies?.[item.id]; return <div className="software-row" key={item.id}><div className="software-main"><span className="row-name">{item.displayName}</span><span className="resource-repo">{item.id} · {item.version}</span><div className="software-meta">{item.transport || '未声明'} · {item.bodyExists === true ? '本体已发现' : item.bodyExists === false ? '本体未发现' : '路径待核对'} · {item.snapshotFrozen ? '快照已冻结' : '快照待核验'}</div><div className="software-path"><strong>绝对路径：</strong>{bodyPath || (platformId ? '该平台未绑定本体' : '请先选择所属平台')}<br /><strong>工作区相对配方：</strong>{item.versionRoot}<br /><strong>入口模板（未解析，不是可直接执行的命令）：</strong>{item.entrypoint || item.versionCall?.[0] || '未声明'}{item.endpoint && <><br /><strong>端点：</strong>{item.endpoint}</>}</div></div><div className="resource-actions software-actions"><span className={result?.status === 'PASS' || result?.status === 'READY' ? 'pill good' : result ? 'pill warn' : 'pill'}>{result?.status || '未检查'}</span><button className="small-button" disabled={!platformId} onClick={() => checkSoftware(item,platformId)}>健康检查</button><button className="small-button" disabled={!platformId} onClick={() => setActionId(item.id)}>功能参数与会话</button><button className="small-button" disabled={!bodyPath} onClick={() => previewSoftwareLocation(item, platformId)}>打开位置</button><button className="small-button" onClick={() => previewSoftware(item)}>查看启动条件</button></div></div>; })}
     {!inventory && <div className="empty">选择工作区后显示软件。</div>}
-  </div></section>;
+  </div></section><SoftwareActionsPanel api={api} workspace={workspace} platformId={platformId} softwareId={actionId} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} setMessage={setMessage} /></>;
 }
