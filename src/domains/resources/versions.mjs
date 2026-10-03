@@ -1,6 +1,7 @@
 import {existsSync,readFileSync} from 'node:fs';
 import {targetPath,safeRelative} from '../../core/paths.mjs';
 import {readJson} from '../../core/json.mjs';
+import {sha256} from '../../core/hash.mjs';
 import {verifyFrozenDirectory} from './integrity.mjs';
 import {validateResourceContent} from './contracts.mjs';
 
@@ -13,10 +14,11 @@ export function dependencyEntries(value) {
   return entries;
 }
 export function validateFrozenResource(workspaceRoot,repository,resourceId,version,context={seen:new Set(),visiting:new Set()},subdirectory='') {
+  context.resources ||=new Map();
   if(!['tool','agent','software'].includes(repository) || !ID.test(resourceId) || !VERSION.test(version)) throw Error('INVALID_RESOURCE_VERSION');
   const key=`${repository}/${subdirectory}${resourceId}@${version}`;
   if(context.visiting.has(key)) throw Error('RESOURCE_DEPENDENCY_CYCLE');
-  if(context.seen.has(key)) return context.seen.get?.(key);
+  if(context.seen.has(key)) return context.resources.get(key);
   context.visiting.add(key);
   const canonical=targetPath(workspaceRoot,`${repository}/${subdirectory}${resourceId}/versions/${version}`);
   const directory=context.directoryForResource?.(key,canonical) || canonical;
@@ -35,6 +37,16 @@ export function validateFrozenResource(workspaceRoot,repository,resourceId,versi
   if(manifest.members) declarations.push({skills:manifest.members});
   for(const declaration of declarations) for(const [section,[repo,prefix]] of Object.entries(kinds)) {
     for(const [id,pin] of dependencyEntries(declaration?.[section])) validateFrozenResource(workspaceRoot,repo,id,pin,context,prefix);
+  }
+  if(repository==='agent' && manifest.bodyContexts) {
+    const lock=readJson(targetPath(directory,manifest.toolLock));
+    if(!Array.isArray(manifest.bodyContexts))throw Error('RESOURCE_CONTEXT_INVALID');
+    for(const item of manifest.bodyContexts) {
+      const skill=context.resources.get(`tool/skills/${item.id}@${item.version}`);
+      if(lock.skills?.[item.id]!==item.version || !skill || skill.sumsSha256!==item.sha256Manifest || !item.entry || !existsSync(targetPath(directory,safeRelative(item.entry))))throw Error('RESOURCE_CONTEXT_CHANGED');
+      // Compare the copied instruction file to its preview binding, independently of the release seal.
+      if(sha256(get(item.entry))!==item.textSha256)throw Error('RESOURCE_CONTEXT_CHANGED');
+    }
   }
   context.resources?.set(key,{manifest,...integrity});
   context.visiting.delete(key);context.seen.add(key);

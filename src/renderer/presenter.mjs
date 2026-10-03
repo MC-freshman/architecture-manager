@@ -5,6 +5,10 @@ export function friendlyError(error) {
   const code = String(error?.message ?? error).replace(/^Error invoking remote method '[^']+':\s*/, '').replace(/^(?:Error:\s*)+/,'');
   const [key, ...details] = code.split(':');
   const hints = {
+    AGENT_MAIN_WORKFLOW_REQUIRED:'请选择一条主工作流，并将它勾选进精确依赖。专家正文需要这条工作流才能被调用。',
+    BODY_TEXT_REQUIRED:'正文不能为空，请选择正文入口或填写完整内容。',
+    IMPORT_GIT_BASELINE_REQUIRED:'登记文件有尚未提交的变化。请到 Git 页提交这些文件，建立可回滚基线后再执行接入。',
+    IMPORT_EXTERNAL_CHANGE:'登记或本体被外部修改，管理台已保留现场。请重新读取后生成计划。',
     IMPORT_GIT_BASELINE_REQUIRED:'覆盖现有登记前需要可回滚的 Git 提交。请在仓库页提交计划涉及的现有配置，再重新预览；其它暂存内容不会混入。',
     IMPORT_EXTERNAL_CHANGE:'导入目标已被其它操作改动，已保留现场。请重新读取记录，不能用旧计划覆盖新内容。',
     IMPORT_BUSY:'这份导入仍在执行，请等待安全步骤收口或停止本次操作后再继续。',

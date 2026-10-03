@@ -144,6 +144,10 @@ function registerIpc() {
     return result.canceled?null:result.filePaths[0] ?? null;
   });
   handleOperation('intake:scan-source',()=>{throw Error('IPC_BACKEND_REQUIRED');});
+  handleOperation('intake:body-editor',()=>{throw Error('IPC_BACKEND_REQUIRED');});
+  handleOperation('intake:body-smoke',()=>{throw Error('IPC_BACKEND_REQUIRED');});
+  handleOperation('intake:dependencies',()=>{throw Error('IPC_BACKEND_REQUIRED');});
+  handleOperation('intake:agent-skill-plan',()=>{throw Error('IPC_BACKEND_REQUIRED');});
   handleOperation('intake:history',()=>{throw Error('IPC_BACKEND_REQUIRED');});
   handleOperation('intake:journal',()=>{throw Error('IPC_BACKEND_REQUIRED');});
   handleOperation('intake:revert-plan',()=>{throw Error('IPC_BACKEND_REQUIRED');});

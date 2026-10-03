@@ -7,6 +7,7 @@ import {runtimeFile} from '../core/runtime-path.mjs';
 
 const scope=new AsyncLocalStorage();
 export function withProcessScope(context,operation) {return scope.run(context,operation);}
+export function withScopedCleanup(operation) {const context=scope.getStore();return context?scope.run({...context,deferCancellation:true},operation):operation();}
 export function processScopeCancelled(context) {return (context.signal && Atomics.load(new Int32Array(context.signal),0)===1) || (context.cancelPath && existsSync(context.cancelPath));}
 export function assertScopedActive() {const context=scope.getStore();if(context && !context.deferCancellation && context.mode!=='provider-session' && processScopeCancelled(context)) throw Error('TASK_CANCELLED');}
 export function runScopedProcess(executable,args,options={}) {

@@ -1,5 +1,6 @@
 // Read-only application operations. These functions must not mutate workspace files.
 export {scanExternalBody} from '../domains/intake/sources.mjs';
+export {readBodyEditor,listBodyDependencies} from '../domains/intake/shared-body.mjs';
 export {listIntakeJournals,readIntakeJournal} from '../domains/intake/journals.mjs';
 export { inspectPlatformDirectory, scanWorkspace } from '../inventory.mjs';
 export { inspectRegistration, readCatalogEntry, readSkillContent } from '../catalog.mjs';

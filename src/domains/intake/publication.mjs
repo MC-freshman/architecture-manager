@@ -33,7 +33,7 @@ function location(root,platformId,planId) {
 function assertChange(plan,change) {
   if(sourceRelative(change.path)!==change.path)throw Error('IMPORT_MUTATION_NOT_ALLOWED');
   const {repository,resourceId,prefix,version,platformId}=plan.target;
-  const pointer=`${repository}/${prefix}${resourceId}/current.json`,catalog=`tool/_registry/skills-${resourceId}.json`;
+  const pointer=`${repository}/${prefix}${resourceId}/current.json`,catalog=plan.target.settings?.skillCatalogPath || `tool/_registry/skills-${resourceId}.json`;
   if(![pointer,`${repository}/registry.json`,...(plan.target.type==='skill'?[catalog]:[])].includes(change.path) && !change.path.startsWith(`${platformId}/bridge/`))throw Error('IMPORT_MUTATION_NOT_ALLOWED');
   targetPath(plan.workspaceRoot,change.path);
   const next=JSON.parse(change.content);
@@ -43,7 +43,15 @@ function assertChange(plan,change) {
     const strip=value=>({...value,version:0,[section]:(value[section] || []).filter(entry=>!ids.has(entry.id))});
     if(stableJson(strip(previous))!==stableJson(strip(next)) || next.version!==previous.version+1)throw Error('IMPORT_FOREIGN_REGISTRY_CHANGE');
   }
-  if(change.path===catalog && (!Array.isArray(next.skills) || next.skills.some(row=>row.id!==resourceId)))throw Error('IMPORT_CATALOG_INVALID');
+  if(change.path===catalog) {
+    if(!/^tool\/_registry\/skills-[a-z0-9._-]+\.json$/i.test(catalog) || !Array.isArray(next.skills) || next.skills.filter(row=>row.id===resourceId).length!==1 || next.skills.find(row=>row.id===resourceId).version!==version)throw Error('IMPORT_CATALOG_INVALID');
+    const previous=change.before===null?null:JSON.parse(change.before),strip=value=>({...value,skills:value.skills.filter(row=>row.id!==resourceId)});
+    if(previous && stableJson(strip(previous))!==stableJson(strip(next)))throw Error('IMPORT_FOREIGN_CATALOG_CHANGE');
+    if(catalog!==`tool/_registry/skills-${resourceId}.json`) {
+      const registry=readJson(targetPath(plan.workspaceRoot,'tool/registry.json'));
+      if(!registry.skills?.some(row=>row.kind==='skill-catalog' && `tool/${row.path}`===catalog) || !previous?.skills.some(row=>row.id===resourceId))throw Error('IMPORT_CATALOG_INVALID');
+    } else if(!previous && next.skills.some(row=>row.id!==resourceId))throw Error('IMPORT_CATALOG_INVALID');
+  }
   if(hasSensitiveLiteral(change.content) || change.before!==null && hasSensitiveLiteral(change.before))throw Error('RAW_SECRET_NOT_ALLOWED');
   if(sha256(change.content)!==change.afterSha256 || (change.before===null?null:sha256(change.before))!==change.beforeSha256)throw Error('PLAN_PAYLOAD_MISMATCH');
 }

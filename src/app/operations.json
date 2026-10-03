@@ -1,6 +1,10 @@
 {
   "schema": "architecture-manager-operations/v1",
   "operations": {
+    "checkSharedBody": {"channel":"intake:body-smoke","phase":"execute","backend":"checkSharedBody","argumentsStyle":"input","taskMode":"owned"},
+    "readBodyEditor": {"channel":"intake:body-editor","phase":"query","backend":"readBodyEditor","argumentsStyle":"input","taskMode":"owned"},
+    "listBodyDependencies": {"channel":"intake:dependencies","phase":"query","backend":"listBodyDependencies","argumentsStyle":"input","taskMode":"owned"},
+    "previewAgentSkillBody": {"channel":"intake:agent-skill-plan","phase":"plan","backend":"buildAgentSkillBodyPlan","argumentsStyle":"input","taskMode":"owned"},
     "confirm": {
       "channel": "ui:confirm",
       "phase": "ui"
