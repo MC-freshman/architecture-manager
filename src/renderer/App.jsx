@@ -244,17 +244,20 @@ export default function App() {
 
   const checkPlatform = async (platform, mode) => {
     if (!workspace) return;
-    const label = mode === 'full' ? '完整接入认证' : '单格调用检查';
-    if (!await api.confirm(`确认对 ${platform.id} 运行${label}？\n\n这会在该平台 runtime/manager-check 下保存检查证据；完整认证可能需要较长时间。`)) return;
     setBusy(true);
-    setMessage(`正在检查 ${platform.id}，请等待结果……`);
     try {
-      const result = await api.runPlatformCheck({ workspaceRoot: workspace, platformId: platform.id, mode });
-      const refreshed = await api.refreshPlatform({ workspaceRoot:workspace, platformId:platform.id });
-      setInventory((current) => ({ ...current, platforms:current.platforms.map((item) => item.id === platform.id ? refreshed : item) }));
-      setMessage(`${platform.id} 检查结果：${result.stage}；${result.issues.length ? result.issues.join('；') : '无缺口'}。证据：${result.evidencePath}`);
-    } catch (error) { setMessage(`${platform.id} 检查失败：${friendlyError(error)}`); }
-    finally { setBusy(false); setTransactionProgress(null); }
+      setMessage('正在计算受影响范围，尚未执行矩阵……');
+      const scope=await api.previewPlatformCheck({workspaceRoot:workspace,platformId:platform.id,mode});
+      const label=scope.kind==='full'?'首次或大版本完整认证':scope.kind==='resume-first'?'继续首次认证':'增量检查';
+      const detail=scope.selected.map(key=>key+'：'+scope.reasons[key].join('；')).join('\n');
+      if(!await api.confirm('确认对 '+platform.id+' 运行'+label+'？\n本次实测 '+scope.selected.length+' 格；沿用 '+scope.reused.length+' 格原证据。\n'+detail)) return;
+      setMessage('正在检查 '+platform.id+'，本次实测 '+scope.selected.length+' 格……');
+      const result=await api.runPlatformCheck({workspaceRoot:workspace,platformId:platform.id,mode,expectedScopeDigest:scope.scopeDigest});
+      const refreshed=await api.refreshPlatform({workspaceRoot:workspace,platformId:platform.id});
+      setInventory(current=>({...current,platforms:current.platforms.map(item=>item.id===platform.id?refreshed:item)}));
+      setMessage(platform.id+' 检查结果：'+result.stage+'；实测 '+(result.provenance?.actualRows ?? 0)+' 格，沿用 '+(result.provenance?.reusedRows ?? 0)+' 格；'+(result.issues.length?result.issues.join('；'):'无缺口')+'。证据：'+result.evidencePath);
+    } catch(error) {setMessage(platform.id+' 检查失败：'+friendlyError(error));}
+    finally {setBusy(false);setTransactionProgress(null);}
   };
 
   const addPlatformDirectory = async () => {

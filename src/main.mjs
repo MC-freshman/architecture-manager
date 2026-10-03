@@ -56,6 +56,7 @@ import {
   inspectGit,
   inspectPlatformDirectory,
   inspectPlatformConnection,
+  previewPlatformCheck,
   inspectRegistration,
   listIntegrationTargets,
   listResourceReferences,
@@ -141,6 +142,7 @@ function registerIpc() {
   handleOperation('platform:refresh', (_event, input) => refreshPlatformInventory(input));
   handleOperation('platform:inspect', (_event, input) => inspectPlatformDirectory(input.workspaceRoot, input.platformId, input.directoryRelative));
   handleOperation('platform:connection', (_event, input) => inspectPlatformConnection(input));
+  handleOperation('platform:check-preview', (_event,input)=>previewPlatformCheck(input));
   handleOperation('platform:check', (event, input) => owned(input, (registerCancel) => runPlatformCheck({ ...input, registerCancel, onProgress: (progress) => event.sender.send('transaction:progress', progress) })));
   handleOperation('plan:platform-view', (_event, input) => buildPlatformViewPlan(input));
   handleOperation('plan:resource-pointer', (_event, input) => buildResourcePointerPlan(input));

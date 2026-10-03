@@ -194,9 +194,8 @@ export function buildOnboardingCard(workspaceRoot, platformId) {
   };
 }
 
-// One-click pipeline (3.5.0 P8): precheck -> quick conform -> optional full
-// matrix, stopping at the first failed stage. Runs the platform's own checks
-// (runPlatformCheck writes evidence under the platform's runtime/manager-check).
+// Compatibility facade: one certification operation chooses its own scope.
+// Never run a redundant quick check before the initial/full request.
 export async function runOnboardingPipeline({ workspaceRoot, platformId, includeMatrix = false }, { inspect = inspectPlatformConnection, check = runPlatformCheck } = {}) {
   const steps = [];
   let precheck;
@@ -207,13 +206,8 @@ export async function runOnboardingPipeline({ workspaceRoot, platformId, include
   }
   steps.push({ step: 'precheck', result: precheck });
   if (!['configured', 'callable', 'complete', 'check-failed', 'check-cancelled'].includes(precheck.stage)) return { platformId, steps, stoppedAt: 'precheck' };
-  const quick = await check({ workspaceRoot, platformId, mode: 'quick' });
-  steps.push({ step: 'conform-quick', result: quick });
-  if (quick.issues?.length > 0) return { platformId, steps, stoppedAt: 'conform-quick' };
-  if (includeMatrix) {
-    const full = await check({ workspaceRoot, platformId, mode: 'full' });
-    steps.push({ step: 'matrix-full', result: full });
-    if (full.issues?.length > 0) return { platformId, steps, stoppedAt: 'matrix-full' };
-  }
+  const checked = await check({ workspaceRoot, platformId, mode: includeMatrix?'full':'quick' });
+  steps.push({ step: 'certification', result: checked });
+  if (checked.issues?.length > 0) return { platformId, steps, stoppedAt: 'certification' };
   return { platformId, steps, stoppedAt: null };
 }

@@ -48,8 +48,8 @@ test('pipeline awaits the check and stops on its actual gap result', async () =>
     inspect: () => ({ stage: 'configured' }),
     check: async ({ mode }) => { calls.push(mode); await new Promise((resolve) => setTimeout(resolve, 10)); return { issues: ['gap'], stage: 'callable' }; }
   });
-  assert.deepEqual(calls, ['quick']);
-  assert.equal(report.stoppedAt, 'conform-quick');
+  assert.deepEqual(calls, ['full']);
+  assert.equal(report.stoppedAt, 'certification');
   assert.equal(report.steps[1].result.stage, 'callable');
   const invalid = await runOnboardingPipeline({ workspaceRoot: 'fixture', platformId: 'newp' }, { inspect: () => ({ stage: 'invalid-bridge' }), check: () => { throw new Error('must-not-dispatch'); } });
   assert.equal(invalid.stoppedAt, 'precheck');

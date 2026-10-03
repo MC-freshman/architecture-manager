@@ -5,6 +5,11 @@ export function friendlyError(error) {
   const code = String(error?.message ?? error);
   const [key, ...details] = code.split(':');
   const hints = {
+    TASK_CANCELLED:'已停止本次任务。已完成的安全步骤和证据保留，可重新扫描后继续。',
+    CERTIFICATION_SCOPE_CHANGED:'确认后资源或配置发生了变化，请重新预览检查范围。',
+    CERTIFICATION_EMPTY_SELECTION:'当前选择没有对应的启用资源，不能将空检查标为通过。',
+    CERTIFICATION_BINDING_CHANGED:'检查期间资源或平台配置改变，本次结果不能用于认证。请重新读取后检查。',
+    CERTIFICATION_PLATFORM_PATH_MISMATCH:'认证使用的配置或环境文件必须属于所选平台，不能借用其它平台。',
     RECOVERY_EXTERNAL_CHANGE: '失败恢复时发现文件又被外部修改。已保留现场和备份，不会用旧内容覆盖新改动；请查看恢复记录。',
     RESOURCE_SCHEMA_INVALID: '资源结构不符合架构契约，请查看字段问题并补齐后重新预览。',
     RESOURCE_IDENTITY_MISMATCH: '资源 manifest 的 ID 或版本与目标目录不一致，请更正候选文件。',

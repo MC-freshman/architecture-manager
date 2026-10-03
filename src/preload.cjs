@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('architectureManager', Object.freeze({
   inspectPlatformConnection: (...args) => ipcRenderer.invoke("platform:connection", ...args),
   refreshPlatform: (...args) => ipcRenderer.invoke("platform:refresh", ...args),
   runPlatformCheck: (...args) => ipcRenderer.invoke("platform:check", ...args),
+  previewPlatformCheck: (...args) => ipcRenderer.invoke("platform:check-preview", ...args),
   previewPlatformPlan: (...args) => ipcRenderer.invoke("plan:platform-view", ...args),
   previewResourcePlan: (...args) => ipcRenderer.invoke("plan:resource-pointer", ...args),
   readCatalogEntry: (...args) => ipcRenderer.invoke("catalog:read", ...args),

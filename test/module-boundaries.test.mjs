@@ -14,7 +14,7 @@ test('application boundary exposes the complete IPC domain surface', () => {
     'applyPlan', 'applyWorkspaceClone', 'buildDefectBookEditPlan', 'buildDocsSite', 'buildDocumentPlan', 'buildGitPlan', 'buildIntegrationPlan',
     'buildPlatformViewPlan', 'buildRegistryPlan', 'buildReleasePlan', 'buildResourcePointerPlan',
     'buildSoftwareImportPlan', 'buildSoftwareLaunchPlan', 'buildSoftwareRecipePlan', 'buildSoftwareRevertPlan', 'buildSoftwareConnectorLaunchPlan', 'buildPlatformScaffoldPlan', 'buildWorkspaceClonePlan', 'checkDocsLinks', 'diffDocument', 'healthSoftware', 'inspectGit',
-    'inspectPlatformConnection', 'inspectPlatformDirectory', 'inspectRegistration', 'listIntegrationTargets', 'listResourceReferences', 'listSoftwareIntakes', 'listSoftwareRecoveries',
+    'inspectPlatformConnection', 'previewPlatformCheck','inspectPlatformDirectory', 'inspectRegistration', 'listIntegrationTargets', 'listResourceReferences', 'listSoftwareIntakes', 'listSoftwareRecoveries',
     'parseImplementationTables', 'readCatalogEntry', 'readDocument', 'readIntegrationTarget', 'readRegistryBaseline', 'readSkillContent',
     'governanceOnboardingDraft', 'buildOnboardingCard', 'runOnboardingPipeline', 'readOnboardingConfig', 'buildOnboardingConfigPlan',
     'buildOnboardingRuntimePlan', 'buildOnboardingBackendPlan', 'detectRuntime',

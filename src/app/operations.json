@@ -47,6 +47,13 @@
       "argumentsStyle": "input",
       "taskMode": "owned"
     },
+    "previewPlatformCheck": {
+      "channel":"platform:check-preview",
+      "phase":"query",
+      "backend":"previewPlatformCheck",
+      "argumentsStyle":"input",
+      "taskMode":"owned"
+    },
     "previewPlatformPlan": {
       "channel": "plan:platform-view",
       "phase": "plan"

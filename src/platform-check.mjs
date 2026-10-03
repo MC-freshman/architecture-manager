@@ -1,17 +1,15 @@
-import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { dirname, join,resolve } from 'node:path';
 import { sha256 } from './core/hash.mjs';
 import { inside, readJson } from './core/json.mjs';
-import { promisify } from 'node:util';
-
-const execFileAsync = promisify(execFile);
 import { isRegisteredPlatform } from './core/platforms.mjs';
 import { runOwnedProcess } from './core/owned-process.mjs';
-import { fileURLToPath } from 'node:url';
 import { runtimeFile } from './core/runtime-path.mjs';
 import { clientBinding } from './onboarding-client.mjs';
-import { environmentBinding } from './onboarding-state.mjs';
+import { environmentBinding } from './domains/certification/binding.mjs';
+import {certificationSnapshot} from './domains/certification/fingerprints.mjs';
+import {certificationSelection} from './domains/certification/selection.mjs';
+import {mergeCertification,readCoverage} from './domains/certification/evidence.mjs';
 import { matrixProgressDecoder } from './core/matrix-progress.mjs';
 
 function fail(stage, issues, extra = {}) { return { schema: 'architecture-manager-platform-check/v1', stage, issues, ...extra, writePerformed: false }; }
@@ -52,7 +50,10 @@ export function inspectPlatformConnection({ workspaceRoot, platformId }) {
   if (existsSync(statePath)) {
     try {
       const state = readJson(statePath); const binding = clientBinding(root, platformId);
-      if (state.status === 'complete' && state.configSha256 === configSha256 && state.versionsSha256 === binding.versionsSha256 && state.adapterSha256 === binding.adapterSha256 && state.environmentBindingSha256 === environmentBinding(root, platformId)) return fail('complete', [], { ...common, configPath, configSha256, evidencePath: statePath, counts: state.firstCertification?.counts, checkedAt: state.completedAt, evidenceFresh: false });
+      if (state.status === 'complete' && state.configSha256 === configSha256 && state.versionsSha256 === binding.versionsSha256 && state.adapterSha256 === binding.adapterSha256) {
+        const currentEnvironment=environmentBinding(root,platformId),coverage=state.environmentBindingSha256===currentEnvironment?null:readCoverage(root,platformId).coverage;
+        if(state.environmentBindingSha256===currentEnvironment || coverage?.snapshot.configSha256===configSha256 && coverage.environmentBindingSha256===currentEnvironment) return fail('complete', [], { ...common, configPath, configSha256, evidencePath: coverage?.matrixPath || statePath, counts: state.firstCertification?.counts, checkedAt: coverage?.checkedAt || state.completedAt, evidenceFresh: false });
+      }
     } catch { /* Incomplete records cannot certify a platform. */ }
   }
   const previousPath = join(platformRoot, 'runtime', 'manager-check', 'latest.json');
@@ -79,6 +80,11 @@ function releaseScript(root, id, subpath) {
 }
 
 function saveCheck(base, out, result) {
+  const snapshotPath=join(out,'scope-snapshot.json');
+  if(existsSync(snapshotPath)) {const scope=readJson(snapshotPath);result={...result,scopeSnapshotPath:snapshotPath,scopeSnapshotSha256:sha256(readFileSync(snapshotPath)),certificationScope:{kind:scope.selection.kind,selected:scope.selection.selected,reused:scope.selection.reused,reasons:scope.selection.reasons,removed:scope.selection.removed}};}
+  if(result.matrixPath && existsSync(result.matrixPath)) result.matrixSha256=sha256(readFileSync(result.matrixPath));
+  if(result.matrixActualPath && existsSync(result.matrixActualPath)) result.matrixActualSha256=sha256(readFileSync(result.matrixActualPath));
+  if(result.partialPath && existsSync(result.partialPath)) result.partialSha256=sha256(readFileSync(result.partialPath));
   const evidencePath = join(out, 'check.json');
   const content = `${JSON.stringify(result, null, 2)}\n`;
   writeFileSync(evidencePath, content, { flag: 'wx' });
@@ -86,10 +92,23 @@ function saveCheck(base, out, result) {
   const temporary = `${latest}.${process.pid}.tmp`;
   writeFileSync(temporary, content, { flag: 'wx' });
   renameSync(temporary, latest);
+  if(result.partialPath || result.matrixActualPath) {
+    const pending=join(base,'pending-latest.json'),staging=pending+'.'+process.pid+'.tmp';
+    writeFileSync(staging,content,{flag:'wx'});renameSync(staging,pending);
+  }
   return { ...result, evidencePath, writePerformed: true };
 }
 
-export async function runPlatformCheck({ workspaceRoot, platformId, mode = 'quick', only = null, stopOnFloorFailure = false, onProgress = () => {}, registerCancel = () => {} }) {
+export function previewPlatformCheck({workspaceRoot,platformId,mode='full',only=null}) {
+  const root=resolve(workspaceRoot),pre=inspectPlatformConnection({workspaceRoot:root,platformId});
+  if(!pre.configPath) throw Error('ONBOARDING_CONFIGURATION_REQUIRED');
+  const snapshot=certificationSnapshot(root,platformId,readJson(pre.configPath));
+  const selection=certificationSelection(root,platformId,snapshot,{mode,only});
+  const scopeDigest=sha256(JSON.stringify({snapshot:snapshot.digest,selected:selection.selected,kind:selection.kind}));
+  return {platformId,kind:selection.kind,selected:selection.selected,reused:selection.reused,removed:selection.removed,reasons:selection.reasons,scopeDigest,writePerformed:false};
+}
+
+export async function runPlatformCheck({ workspaceRoot, platformId, mode = 'quick', only = null, expectedScopeDigest=null, stopOnFloorFailure = false, onProgress = () => {}, registerCancel = () => {} }) {
   if (!['quick', 'full'].includes(mode)) throw new Error('INVALID_PLATFORM_CHECK_MODE');
   const root = resolve(workspaceRoot);
   const pre = inspectPlatformConnection({ workspaceRoot: root, platformId });
@@ -104,6 +123,11 @@ export async function runPlatformCheck({ workspaceRoot, platformId, mode = 'quic
   const config = readJson(pre.configPath); const bridge = readJson(pre.bridgePath);
   const python = bridge.runner?.python || config.interpreters?.['.py'];
   if (!python || !existsSync(python)) throw new Error('RUNTIME_PYTHON_REQUIRED');
+  const snapshot=certificationSnapshot(root,platformId,config,{persistCache:true});
+  const selection=certificationSelection(root,platformId,snapshot,{mode,only});
+  if(expectedScopeDigest && expectedScopeDigest!==sha256(JSON.stringify({snapshot:snapshot.digest,selected:selection.selected,kind:selection.kind}))) throw Error('CERTIFICATION_SCOPE_CHANGED');
+  mode=selection.mode;only=selection.only;
+  writeFileSync(join(out,'scope-snapshot.json'),JSON.stringify({snapshot,fullAnchor:selection.baseline?.fullAnchor || null,baselineRows:selection.baseline?.rows || {},selection:{kind:selection.kind,selected:selection.selected,reused:selection.reused,reasons:selection.reasons,removed:selection.removed}},null,2)+'\n',{flag:'wx'});
   const command = async (script, args, timeout, onOutput = () => {}, cancellable = true) => {
     try { return await runOwnedProcess({ python, args: ['-B', script, ...args], cwd: out, scopeRoot: out, env: environment, timeout, registerCancel: cancellable ? registerCancel : () => {}, onOutput }); }
     catch (error) { return { stdout: error.stdout || '', stderr: error.stderr || String(error.message), exitCode: error.code ?? 1 }; }
@@ -129,23 +153,14 @@ export async function runPlatformCheck({ workspaceRoot, platformId, mode = 'quic
   if (progressSupported) matrixArgs.push('--progress-jsonl', '--partial-out', partialPath);
   const exceptionsPath = join(root, platformId, 'bridge', 'invocation-exceptions.json');
   if (existsSync(exceptionsPath)) matrixArgs.push('--exceptions', exceptionsPath);
-  if (mode === 'quick') {
-    const workflows = readJson(join(root, 'tool', 'registry.json')).workflows || [];
-    const selected = workflows.find((item) => item.id === 'expert-task' && item.enabled) || workflows.find((item) => item.enabled && item.id !== 'wf-runner');
-    if (!selected) throw new Error('NO_CALLABLE_WORKFLOW_REGISTERED');
-    matrixArgs.push('--only', only || selected.id);
-  }
-  const callableCount = mode === 'full' ? ['tool', 'agent', 'software'].reduce((count, repo) => {
-    const registry=readJson(join(root,repo,'registry.json'));
-    const entries=registry[repo === 'tool' ? 'workflows' : repo === 'agent' ? 'agents' : 'software'] || [];
-    return count+entries.filter(entry=>entry.enabled === true && (repo === 'software' || entry.invocable !== false)).length;
-  },0) : 1;
+  if (selection.kind!=='full' && selection.selected.length) matrixArgs.push('--only',only);
+  const callableCount=selection.selected.length;
   // First onboarding must finish the required inventory; a fixed 30-minute cap
   // can abort a valid large registry. This budget does not claim to improve speed.
-  const matrixTimeout=mode === 'quick' ? 180000 : Math.max(1800000, callableCount*90000);
-  onProgress({ platformId, phase: mode === 'quick' ? '检查受影响调用格' : `首次完整调用矩阵（${callableCount} 项）`, timeoutSeconds:matrixTimeout/1000, outputPath: out });
+  const matrixTimeout=Math.max(mode==='full'?1800000:180000,callableCount*90000);
+  onProgress({ platformId, phase: !callableCount?`沿用 ${selection.reused.length} 格原证据，本次不启动矩阵`:mode === 'quick' ? `检查受影响调用格（${callableCount} 项）` : `首次完整调用矩阵（${callableCount} 项）`, timeoutSeconds:matrixTimeout/1000, outputPath: out });
   const driver = runtimeFile('matrix_driver.py');
-  const matrixResult = await command(driver, [matrix, ...matrixArgs], matrixTimeout, matrixProgressDecoder(platformId, onProgress));
+  const matrixResult = selection.selected.length?await command(driver, [matrix, ...matrixArgs], matrixTimeout, matrixProgressDecoder(platformId, onProgress)):{exitCode:0,stdout:'',stderr:''};
   if (matrixResult.cancelled || matrixResult.timedOut) {
     onProgress({ platformId, phase: '停止本次矩阵的维护探针', outputPath: out });
     const cleanup = await command(runtimeFile('matrix_cleanup.py'), [pre.configPath, out], 120000, () => {}, false);
@@ -159,7 +174,12 @@ export async function runPlatformCheck({ workspaceRoot, platformId, mode = 'quic
   let floor = null;
   let matrixReport = null;
   try { floor = readJson(conformPath); } catch { /* Failure is reported below. */ }
-  try { matrixReport = readJson(matrixPath); } catch { /* Failure is reported below. */ }
+  let merged=null;
+  try {
+    if(pre.configSha256!==sha256(readFileSync(pre.configPath)) || snapshot.digest!==certificationSnapshot(root,platformId,config).digest) throw Error('CERTIFICATION_BINDING_CHANGED');
+    merged=mergeCertification(root,platformId,snapshot,selection,selection.selected.length?matrixPath:null,conformPath,out);
+    matrixReport=merged?.matrix || readJson(matrixPath);
+  } catch(error) {matrixResult.exitCode=1;matrixResult.stderr='检查范围或来源回读不一致：'+error.message;try {matrixReport=readJson(matrixPath);} catch { /* absent evidence remains a failure */ }}
   const rows = Array.isArray(matrixReport?.rows) ? matrixReport.rows : [];
   const failed = rows.filter((row) => row.status === 'FAIL' || row.verdict === 'FAIL').length;
   const passed = rows.filter((row) => row.status === 'PASS' || row.verdict === 'PASS').length;
@@ -178,6 +198,10 @@ export async function runPlatformCheck({ workspaceRoot, platformId, mode = 'quic
   const stage = blocking.length ? 'check-failed' : 'callable';
   const gaps = reportGaps(floor);
   const result = { schema: 'architecture-manager-platform-check/v1', platformId, stage, issues, mode, bridgeSha256: pre.bridgeSha256, configSha256: pre.configSha256, counts: { pass: passed, fail: failed, expected: matrixReport?.summary?.EXPECTED ?? null, needsInput: matrixReport?.summary?.['NEEDS-INPUT'] ?? null, conform: floor?.counts || null }, gaps, conformDigest: floor?.conformDigest || null, conformPath, matrixPath, commandErrors: [conformResult.stderr, matrixResult.stderr].filter(Boolean).map((item) => String(item).slice(0, 500)), checkedAt: new Date().toISOString(), evidenceFresh: true };
+  result.coverageComplete=merged?.coverageComplete===true && !blocking.length && floor?.floorReached===true;
+  result.provenance=merged?.provenance || {actualRows:rows.length,reusedRows:0};
+  result.matrixActualPath=selection.selected.length?matrixPath:null;
+  if(merged) result.matrixPath=merged.matrixPath;
   result.commandErrors = [conformResult.exitCode !== 0 ? conformResult.stderr : '', matrixResult.exitCode !== 0 ? matrixResult.stderr : ''].filter(Boolean).map((item) => String(item).slice(0, 2000));
   return saveCheck(base, out, result);
 }
