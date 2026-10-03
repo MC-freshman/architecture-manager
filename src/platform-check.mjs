@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join,resolve } from 'node:path';
+import { dirname, join,resolve,relative } from 'node:path';
+import {targetPath} from './core/paths.mjs';
 import { sha256 } from './core/hash.mjs';
 import { inside, readJson } from './core/json.mjs';
 import { isRegisteredPlatform } from './core/platforms.mjs';
@@ -71,10 +72,12 @@ export function inspectPlatformConnection({ workspaceRoot, platformId }) {
   return fail('configured', ['配置已找到；尚无与当前文件匹配的调用证据'], { ...common, configPath, configSha256 });
 }
 
-function releaseScript(root, id, subpath) {
+function releaseScript(root, id, subpath, pinned=null) {
   const pointer = readJson(join(root, 'tool', id, 'current.json'));
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(pointer.version)) throw new Error('CHECK_RELEASE_INVALID');
-  const script = join(root, 'tool', id, 'versions', pointer.version, ...subpath);
+  const directory=pinned?targetPath(root,relative(root,pinned)):join(root,'tool',id,'versions',pointer.version);
+  if(pinned && (!inside(join(root,'tool',id,'versions'),directory) || readJson(join(directory,'manifest.json')).id!==id)) throw Error('CHECK_RELEASE_INVALID');
+  const script = join(directory, ...subpath);
   if (!existsSync(script) || !statSync(script).isFile()) throw new Error('CHECK_SCRIPT_MISSING');
   return script;
 }
@@ -117,10 +120,10 @@ export async function runPlatformCheck({ workspaceRoot, platformId, mode = 'quic
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const out = join(base, stamp);
   mkdirSync(out, { recursive: true });
-  const conform = releaseScript(root, 'platform-conformance', ['conformance', 'conform.py']);
-  const matrix = releaseScript(root, 'architecture-ops', ['architecture_ops', 'invocation_matrix.py']);
-  const environment = { ...process.env, PYTHONDONTWRITEBYTECODE: '1', PYTHONIOENCODING: 'utf-8' };
   const config = readJson(pre.configPath); const bridge = readJson(pre.bridgePath);
+  const conform = releaseScript(root, 'platform-conformance', ['conformance', 'conform.py']);
+  const matrix = releaseScript(root, 'architecture-ops', ['architecture_ops', 'invocation_matrix.py'],config.invocationMatrixRelease);
+  const environment = { ...process.env, PYTHONDONTWRITEBYTECODE: '1', PYTHONIOENCODING: 'utf-8' };
   const python = bridge.runner?.python || config.interpreters?.['.py'];
   if (!python || !existsSync(python)) throw new Error('RUNTIME_PYTHON_REQUIRED');
   const snapshot=certificationSnapshot(root,platformId,config,{persistCache:true});

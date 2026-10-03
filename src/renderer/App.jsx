@@ -1,6 +1,7 @@
+import {TaskProgress} from './shared/TaskProgress.jsx';
 import { useWorkspaceState } from './features/workspace/useWorkspaceState.mjs';
 import { usePlanState } from './shared/usePlanState.mjs';
-import { taskClient,progressMatches,cancelTaskProgress } from './shared/task-client.mjs';
+import { taskClient,progressMatches } from './shared/task-client.mjs';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AuditPanel,
@@ -565,7 +566,7 @@ setMessage(planPreview.kind === 'software-launch' ? `连接器答复：${applied
 
       <section className="content">
         <div className="notice" role="status" aria-live="polite"><strong>当前状态：</strong>{message}</div>
-        {transactionProgress && <div className="notice" role="status">正在处理：{transactionProgress.phase || transactionProgress.stage}{transactionProgress.reused ? '（复用有效证据）' : ''}{transactionProgress.path && ` · ${transactionProgress.path}`}{Number.isInteger(transactionProgress.completed) && ` · 已完成 ${transactionProgress.completed}/${transactionProgress.total} 格`}{Number.isFinite(transactionProgress.durationMs) && ` · 本格 ${(transactionProgress.durationMs/1000).toFixed(1)} 秒`}<progress value={transactionProgress.bytesDone ?? transactionProgress.filesDone ?? transactionProgress.completed} max={transactionProgress.bytesTotal || transactionProgress.filesTotal || Math.max(transactionProgress.total || 0,transactionProgress.completed || 1)} />{(transactionProgress.jobId || transactionProgress.platformId) && transactionProgress.cancellable!==false && <button className="small-button" onClick={async()=>{const accepted=await cancelTaskProgress(api,transactionProgress,workspace,workspaceSession);setMessage(accepted?'已请求停止，正在等待本轮进程回收与安全写入收口。':'任务已收口，或会话已交给软件 provider。');}}>停止本次操作</button>}</div>}
+        <TaskProgress progress={transactionProgress} api={api} workspace={workspace} session={workspaceSession} setMessage={setMessage} />
         <div className="view-container">
           {renderView(activeView)}
         </div>

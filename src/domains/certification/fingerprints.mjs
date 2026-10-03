@@ -31,7 +31,7 @@ export function certificationInventory(root) {
   return rows;
 }
 export function certificationSnapshot(root,id,config,{persistCache=false,inventory=certificationInventory(root)}={}) {
-  const hasher=certificationHasher(root,id,{persist:persistCache}),verified=new Map();
+  const hasher=certificationHasher(root,id,{persist:persistCache}),verified=new Map(),contentCache=new Map(),definitionCache=new Map();
   const verifyDirectory=directory=>{
     if(!verified.has(directory)) verified.set(directory,verifyFrozenDirectory(directory,{hashFile:hasher.hashFile}));
     return verified.get(directory);
@@ -59,14 +59,17 @@ export function certificationSnapshot(root,id,config,{persistCache=false,invento
   const rules={selector:1,contracts:pins.contracts.sha256};
   for(const resource of ['platform-conformance','architecture-ops']) {
     const pointer=readJson(targetPath(root,`tool/${resource}/current.json`));
-    rules[resource]=verifyDirectory(targetPath(root,`tool/${resource}/versions/${pointer.version}`)).sumsSha256;
+    const pinned=resource==='architecture-ops'?config.invocationMatrixRelease:null;
+    const directory=pinned?targetPath(root,relative(root,pinned)):targetPath(root,`tool/${resource}/versions/${pointer.version}`);
+    if(!inside(targetPath(root,`tool/${resource}/versions`),directory)) throw Error('CERTIFICATION_RELEASE_PATH_MISMATCH');
+    rules[resource]=verifyDirectory(directory).sumsSha256;
   }
   const globalConfig=Object.fromEntries(Object.entries(config).filter(([key])=>!excludedConfig.has(key)));
   const base={configuration:globalConfig,checks:Object.fromEntries(['runner-protocol-prepare','terminal-stop-with-evidence'].map(key=>[key,capability.checks?.[key] ?? null])),permissions:capability.permissions || {},permissionAdapters:capability.permissionAdapters || []};
   const rulesSha256=digest(rules);
   const cells={};
   for(const row of inventory) {
-    const context={seen:new Set(),visiting:new Set(),resources:new Map(),verifyDirectory};
+    const context={seen:new Set(),visiting:new Set(),resources:new Map(),verifyDirectory,contentCache};
     validateFrozenResource(root,repositories[row.kind],row.id,row.version,context);
     const profiles=new Set(),actions=new Set(),closure=[];
     for(const [key,value] of context.resources) {
@@ -74,7 +77,8 @@ export function certificationSnapshot(root,id,config,{persistCache=false,invento
       for(const profile of manifest.requiredProfiles || []) profiles.add(String(profile));
       if(manifest.toolLock) {const lock=readJson(join(value.directory,manifest.toolLock));for(const key of Object.keys(lock.profiles || {})) profiles.add(key);}
       if(manifest.schema?.startsWith('ai-workflow/')) {
-        const definition=parseDefinition(readFileSync(join(value.directory,manifest.entry),'utf8'));
+        if(!definitionCache.has(value.directory)) definitionCache.set(value.directory,parseDefinition(readFileSync(join(value.directory,manifest.entry),'utf8')));
+        const definition=definitionCache.get(value.directory);
         for(const profile of definition.requiredProfiles || []) profiles.add(String(profile));
         for(const stage of definition.stages || []) if(stage.action) actions.add(stage.action);
       }

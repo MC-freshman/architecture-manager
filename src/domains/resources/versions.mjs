@@ -21,7 +21,14 @@ export function validateFrozenResource(workspaceRoot,repository,resourceId,versi
   const directory=targetPath(workspaceRoot,`${repository}/${subdirectory}${resourceId}/versions/${version}`);
   const integrity=(context.verifyDirectory || verifyFrozenDirectory)(directory);
   const get=name=>readFileSync(targetPath(directory,safeRelative(name)),'utf8');
-  const manifest=validateResourceContent({repository,resourceId,version,read:get,has:name=>existsSync(targetPath(directory,safeRelative(name)))});
+  if(existsSync(targetPath(directory,'SOURCE.json'))) {
+    const source=readJson(targetPath(directory,'SOURCE.json'));
+    // Older frozen releases can retain a staging label beside a publication stamp.
+    // A current resource remains readable; this guard rejects genuinely unissued candidates.
+    if(['candidate','draft','unpublished'].includes(source.releaseStatus) && !source.publishedAt && !source.releasedAt) throw Error('RESOURCE_VERSION_CANDIDATE');
+  }
+  const manifest=context.contentCache?.get(directory) || validateResourceContent({repository,resourceId,version,read:get,has:name=>existsSync(targetPath(directory,safeRelative(name)))});
+  context.contentCache?.set(directory,manifest);
   const declarations=[manifest.dependencies,manifest.depends];
   if(repository==='agent') declarations.push(readJson(targetPath(directory,manifest.toolLock)));
   if(manifest.members) declarations.push({skills:manifest.members});

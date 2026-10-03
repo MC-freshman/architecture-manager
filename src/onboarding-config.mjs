@@ -8,6 +8,7 @@ import { sha256 } from './core/hash.mjs';
 import { targetPath, defaultAuditRoot } from './core/paths.mjs';
 import { validPlatformId } from './core/platforms.mjs';
 import { assertPublishedVersion } from './plans.mjs';
+import {recommendedCertificationPair,recommendedMatrixVersion} from './domains/certification/releases.mjs';
 import { atomicWrite, makeId, output, requirePlan, saveCheckpoint, writeAudit } from './transactions/kernel.mjs';
 
 const stringify = (value) => `${JSON.stringify(value, null, 2)}\n`;
@@ -46,7 +47,7 @@ export function readOnboardingConfig({ workspaceRoot, platformId }) {
   const client = read(targetPath(ctx.root, `${platformId}/bridge/client-adapter.json`));
   const automatic = read(targetPath(ctx.root, `${platformId}/runtime/maintenance/manager-onboarding/automatic.json`), null);
   const pendingAutomatic = automatic && automatic.status !== 'complete' && automatic.inputs && sha256(stringify(automatic.inputs)) === automatic.inputsSha256 ? { status: automatic.status, stoppedAt: automatic.stoppedAt, inputs: automatic.inputs } : null;
-  return { platformId, exists: existsSync(join(ctx.root, platformId)), configPath: ctx.configPath, config: ctx.config, versions, client, pendingAutomatic, fields: {
+  return { platformId, exists: existsSync(join(ctx.root, platformId)), configPath: ctx.configPath, config: ctx.config, versions, client, pendingAutomatic, performanceRecommendation:recommendedCertificationPair(ctx.root),fields: {
     displayName: ctx.bridge.displayName || platformId,
     pythonExecutable: ctx.bridge.runner?.python || ctx.config.interpreters?.['.py'] || '',
     environmentManifest: ctx.config.environmentManifest || '', scriptEnvironment: ctx.config.scriptEnvironment || '', executionBackend: ctx.config.executionBackend || (existsSync(join(ctx.root, platformId, 'bridge/backends/manager-sealed.json')) ? join(ctx.root, platformId, 'bridge/backends/manager-sealed.json') : ''),
@@ -55,7 +56,7 @@ export function readOnboardingConfig({ workspaceRoot, platformId }) {
     clientKind: client.kind || 'cli', clientExecutable: client.executable || '', clientArgs: client.args || [],
     probeTool: client.probeTool || '', probeArguments: client.probeArguments || {},
     gitAuthorName: ctx.config.commitIdentity?.name || '', gitAuthorEmail: ctx.config.commitIdentity?.email || '',
-    runnerVersion: ctx.config.runner?.split(/[\\/]/).at(-1) || null, contractsVersion: ctx.config.contracts?.split(/[\\/]/).at(-1) || null, scannerVersion: ctx.config.scannerRelease?.split(/[\\/]/).at(-1) || null
+    runnerVersion: ctx.config.runner?.split(/[\\/]/).at(-1) || null, contractsVersion: ctx.config.contracts?.split(/[\\/]/).at(-1) || null, scannerVersion: ctx.config.scannerRelease?.split(/[\\/]/).at(-1) || null,matrixVersion:ctx.config.invocationMatrixRelease?.split(/[\\/]/).at(-1) || null
   }, writePerformed: false };
 }
 
@@ -76,8 +77,17 @@ export function buildOnboardingConfigPlan({ workspaceRoot, platformId, fields = 
   const runner = release(root, 'tool', 'wf-runner', fields.runnerVersion);
   const contracts = release(root, 'tool', 'runtime-contracts', fields.contractsVersion);
   const scanner = release(root, 'tool', 'repo-lint', fields.scannerVersion);
+  const scannerPin=read(join(runner.path,'manifest.json')).dependencies?.workflows?.['repo-lint'];
+  if(scannerPin && scannerPin!==scanner.version) throw Error('VERSION_PAIR_MISMATCH');
   if (!existsSync(join(runner.path, 'cli.py')) || !existsSync(join(contracts.path, 'contracts/runtime/validate_contracts.py')) || !existsSync(join(scanner.path, 'scripts/repo_lint.py'))) throw new Error('ONBOARDING_RELEASE_ENTRY_MISSING');
   const config = { ...ctx.config, platform: platformId, platformRoot: join(root, platformId), toolRoot: join(root, 'tool'), agentRoot: join(root, 'agent'), softwareRoot: join(root, 'software'), runsRoot: join(root, platformId, 'runtime/runs'), runner: runner.path, contracts: contracts.path, scannerRelease: scanner.path, bridge: join(root, platformId, 'bridge.json'), capabilities: join(root, platformId, 'bridge/capabilities.json'), softwareRuntimeRoot: join(root, platformId, 'runtime/software'), projectWriteRoots: ctx.config.projectWriteRoots || [join(root, platformId, 'workspaces')], inputRoots: ctx.config.inputRoots || [join(root, platformId, 'workspaces')] };
+  const supportsSmoke=read(join(runner.path,'manifest.json')).interface?.['x-invocationSmoke']==='ai-invocation-smoke/v1';
+  const matrixVersion=fields.matrixVersion || (supportsSmoke?recommendedMatrixVersion(root):null);
+  if(matrixVersion) {
+    const judge=release(root,'tool','architecture-ops',matrixVersion);
+    if(supportsSmoke && read(join(judge.path,'manifest.json')).interface?.invocationSmoke!=='ai-invocation-smoke/v1') throw Error('VERSION_PAIR_MISMATCH');
+    config.invocationMatrixRelease=judge.path;
+  } else if(supportsSmoke) throw Error('VERSION_PAIR_MISMATCH');
   delete config.pendingKeys;
   if (fields.gitAuthorName || fields.gitAuthorEmail) config.commitIdentity = { name: fields.gitAuthorName || '', email: fields.gitAuthorEmail || '' };
   for (const key of ['environmentManifest', 'scriptEnvironment', 'executionBackend', 'peerDispatcherModule', 'peerContentRoot', 'softwareEnvironment']) {

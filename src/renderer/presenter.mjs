@@ -5,6 +5,8 @@ export function friendlyError(error) {
   const code = String(error?.message ?? error);
   const [key, ...details] = code.split(':');
   const hints = {
+    RESOURCE_VERSION_CANDIDATE:'这个版本仍是开发候选，尚不能采用。请使用已发布版本，或等候选验证并发布后重新读取。',
+    VERSION_PAIR_MISMATCH:'引擎与检查器没有按依赖锁配对，请选择完整推荐组合，不能只切其中一件。',
     TASK_CANCELLED:'已停止本次任务。已完成的安全步骤和证据保留，可重新扫描后继续。',
     CERTIFICATION_SCOPE_CHANGED:'确认后资源或配置发生了变化，请重新预览检查范围。',
     CERTIFICATION_EMPTY_SELECTION:'当前选择没有对应的启用资源，不能将空检查标为通过。',

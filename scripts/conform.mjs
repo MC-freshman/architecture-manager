@@ -15,6 +15,8 @@ const steps=[
   ['preload',[path.join(root,'scripts/generate-preload.mjs'),'--check']],
   ['tests',['--test','--test-reporter=tap','--test-concurrency=1']]
 ];
+const proofIndex=process.argv.indexOf('--release-proof');
+if(proofIndex>=0) steps.push(['release-proof',[path.join(root,'scripts/release-proof.mjs'),path.resolve(process.argv[proofIndex+1])]]);
 const results=[];
 for(const [name,args] of steps) {
   const start=performance.now();

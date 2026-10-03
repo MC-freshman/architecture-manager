@@ -284,7 +284,10 @@
     },
     "readOnboardingConfig": {
       "channel": "onboarding:config",
-      "phase": "query"
+      "phase": "query",
+      "backend":"readOnboardingConfig",
+      "argumentsStyle":"input",
+      "taskMode":"owned"
     },
     "previewOnboardingConfigPlan": {
       "channel": "plan:platform-configuration",
