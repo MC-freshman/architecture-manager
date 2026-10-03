@@ -1,7 +1,7 @@
+import {runScopedProcess as execFileSync} from '../../infrastructure/process-scope.mjs';
 import {parseJson as parseJsonText} from '../../core/json.mjs';
 import {existsSync,lstatSync,mkdirSync,readFileSync,writeFileSync,rmSync,copyFileSync,readdirSync} from 'node:fs';
 import {dirname,join,relative} from 'node:path';
-import {execFileSync} from 'node:child_process';
 import {sha256} from '../../core/hash.mjs';
 import {targetPath} from '../../core/paths.mjs';
 import {inside} from '../../core/json.mjs';

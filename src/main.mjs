@@ -1,3 +1,4 @@
+import {runDomainTask,cancelDomainTask,cancelAllDomainTasks} from './infrastructure/tasks.mjs';
 import {parseJson as parseJsonText} from './core/json.mjs';
 import { operationRegistrar } from './electron/operation-registry.mjs';
 import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron';
@@ -79,7 +80,7 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const defaultWorkspace = process.env.ARCHITECTURE_MANAGER_WORKSPACE || null;
-const lifecycle = taskLifecycle(() => { cancelAllOnboardingJobs(); cancelAllOnboardingChecks(); });
+const lifecycle = taskLifecycle(() => { cancelAllOnboardingJobs(); cancelAllOnboardingChecks(); cancelAllDomainTasks(); });
 let quitReady = false;
 async function safeQuit() {
   await lifecycle.close(); quitReady = true; app.quit();
@@ -94,7 +95,27 @@ function rememberWorkspace(root) {
 }
 
 function registerIpc() {
-  const handleOperation = operationRegistrar(ipcMain);
+  const handleOperation = operationRegistrar(ipcMain,{dispatch:({declaration,event,args,handler})=> {
+    const metadata=args.at(-1)?.__managerTaskContext?args.pop():{};
+    const input=args[0];
+    if(!declaration.backend) return handler(event,...args);
+    const workspaceRoot=typeof input==='string'?input:input?.workspaceRoot || input?.plan?.workspaceRoot;
+    let parameters;
+    switch(declaration.argumentsStyle) {
+      case 'document': parameters=[input.workspaceRoot,input.relativePath];break;
+      case 'references': parameters=[input.workspaceRoot,input.repository,input.resourceId];break;
+      case 'health': parameters=[input.workspaceRoot,input.softwareId,input.platformId];break;
+      case 'clone': parameters=[{plan:input.plan}];break;
+      default: parameters=args;
+    }
+    const mode=input?.plan?.kind==='software-launch'?'provider-session':declaration.taskMode;
+    return lifecycle.track(async()=>{
+      const result=await runDomainTask({method:declaration.backend,args:parameters,workspaceRoot,platformId:input?.platformId || input?.plan?.target?.platformId,jobId:metadata.jobId,workspaceSession:metadata.workspaceSession,mode,phase:declaration.phase,onProgress:progress=>event.sender.send('transaction:progress',progress)});
+      if(declaration.backend==='scanWorkspace') rememberWorkspace(result.workspaceRoot);
+      return result;
+    });
+  }});
+  handleOperation('task:cancel',(_event,input)=>cancelDomainTask(input));
   const owned = async (input, operation) => {
     const control = startOnboardingJob(input.workspaceRoot, input.platformId);
     try { return await lifecycle.track(() => operation(control.registerCancel)); } finally { control.finish(); }
@@ -132,7 +153,7 @@ function registerIpc() {
   handleOperation('plan:registry', (_event, input) => buildRegistryPlan(input));
   handleOperation('document:read', (_event, input) => readDocument(input.workspaceRoot, input.relativePath));
   handleOperation('plan:document', (_event, input) => buildDocumentPlan(input));
-  handleOperation('software:health', (_event, input) => healthSoftware(input.workspaceRoot, input.softwareId));
+  handleOperation('software:health', (event,input) => owned(input,registerCancel=>healthSoftware(input.workspaceRoot,input.softwareId,input.platformId,{registerCancel,onProgress:progress=>event.sender.send('transaction:progress',progress)})));
   handleOperation('plan:software', (_event, input) => buildSoftwareLaunchPlan(input));
   handleOperation('plan:software-import', (_event, input) => buildSoftwareImportPlan(input));
   handleOperation('software:intakes', (_event, input) => listSoftwareIntakes(input));

@@ -74,5 +74,6 @@ contextBridge.exposeInMainWorld('architectureManager', Object.freeze({
   applyWorkspaceClone: (...args) => ipcRenderer.invoke("workspace:clone", ...args),
   applyPlan: (...args) => ipcRenderer.invoke("transaction:apply", ...args),
   verifyPlan: (...args) => ipcRenderer.invoke("transaction:verify", ...args),
+  cancelTask: (...args) => ipcRenderer.invoke("task:cancel", ...args),
   onTransactionProgress: (callback) => { const listener = (_event, progress) => callback(progress); ipcRenderer.on('transaction:progress', listener); return () => ipcRenderer.removeListener('transaction:progress', listener); }
 }));

@@ -1,7 +1,7 @@
+import {runScopedProcess as execFileSync} from './infrastructure/process-scope.mjs';
 // docs-site operations (3.5.0 P6). Building and the link/conform check are
-// command-type operations that only write under docs-site/build; they invoke
+// command-type operations that write the site's derived inputs and build output; they invoke
 // the site's own scripts directly with node, never npm shell indirection.
-import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
@@ -13,7 +13,7 @@ function docsSiteRoot(workspaceRoot) {
 
 function runNode(docsSite, args, timeoutMs) {
   try {
-    const output = execFileSync(process.execPath, args, { cwd: docsSite, encoding: 'utf8', timeout: timeoutMs, windowsHide: true, maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+    const output = execFileSync(process.execPath, args, { cwd: docsSite, env:{...process.env,ELECTRON_RUN_AS_NODE:'1'}, encoding: 'utf8', timeout: timeoutMs, windowsHide: true, maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
     return { ok: true, output: output.slice(-4000) };
   } catch (error) {
     return { ok: false, output: [error.stdout, error.stderr].filter(Boolean).join('\n').slice(-4000) };
@@ -23,7 +23,7 @@ function runNode(docsSite, args, timeoutMs) {
 export function buildDocsSite(workspaceRoot) {
   const docsSite = docsSiteRoot(workspaceRoot);
   if (!existsSync(join(docsSite, 'scripts', 'build.mjs'))) throw new Error('DOCS_BUILD_SCRIPT_MISSING');
-  return { schema: 'architecture-manager-docs-build/v1', site: docsSite, ...runNode(docsSite, ['scripts/build.mjs', '--profile', 'internal'], 600000), writeScope: 'docs-site/build only' };
+  return { schema: 'architecture-manager-docs-build/v1', site: docsSite, ...runNode(docsSite, ['scripts/build.mjs', '--profile', 'internal'], 600000), writeScope: 'docs-site/docs + generated + build + data/*.json + static/img/synced + .docusaurus (derived output; source governance documents are read-only)' };
 }
 
 export function checkDocsLinks(workspaceRoot) {

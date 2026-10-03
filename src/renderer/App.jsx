@@ -1,5 +1,6 @@
 import { useWorkspaceState } from './features/workspace/useWorkspaceState.mjs';
 import { usePlanState } from './shared/usePlanState.mjs';
+import { taskClient,progressMatches,cancelTaskProgress } from './shared/task-client.mjs';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AuditPanel,
@@ -25,14 +26,14 @@ import {
 } from './components.jsx';
 import { friendlyError, PLAN_WRITE_KINDS } from './presenter.mjs';
 
-const api = window.architectureManager;
-
 export default function App() {
-  const { workspace, setWorkspace, inventory, setInventory, busy, setBusy, message, setMessage } = useWorkspaceState();
+  const { workspace, setWorkspace, workspaceSession, inventory, setInventory, busy, setBusy, message, setMessage,recordProgress } = useWorkspaceState();
+  const api=useMemo(()=>taskClient(window.architectureManager,workspaceSession),[workspaceSession]);
   const { planPreview, setPlanPreview, planPayload, setPlanPayload } = usePlanState();
   const [appVersion, setAppVersion] = useState('读取中');
   useEffect(() => { api.getAppVersion().then(setAppVersion).catch(() => setAppVersion('版本未读取')); }, []);
   const [transactionProgress, setTransactionProgress] = useState(null);
+  useEffect(()=>setTransactionProgress(null),[workspaceSession]);
   const [showExcluded, setShowExcluded] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [documentDraft, setDocumentDraft] = useState('');
@@ -85,7 +86,11 @@ export default function App() {
     return () => {valid=false;};
   },[view,workspace,gitDetails]);
 
-  useEffect(() => api.onTransactionProgress((progress) => setTransactionProgress(progress)), []);
+  useEffect(() => api.onTransactionProgress(progress=>{
+    if(!progressMatches(progress,workspace,workspaceSession)) return;
+    recordProgress(progress);
+    setTransactionProgress(progress.state==='settled'?null:progress);
+  }), [api,workspace,workspaceSession,recordProgress]);
 
   useEffect(() => {
     if (planPreview) document.getElementById('plan-preview')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -359,14 +364,15 @@ export default function App() {
     }
   };
 
-  const checkSoftware = async (item) => {
+  const checkSoftware = async (item,platformId) => {
+    setBusy(true);
     try {
-      const result = await api.softwareHealth({ workspaceRoot: workspace, softwareId: item.id });
-      setSoftwareResults((state) => ({ ...state, [item.id]: result }));
-      setMessage(`${item.id} 健康检查：${result.status}`);
+      const result = await api.softwareHealth({ workspaceRoot: workspace, softwareId: item.id,platformId });
+      setSoftwareResults((state) => ({ ...state, [platformId+'/'+item.id]: result }));
+      setMessage(`${platformId}/${item.id} 健康检查：${result.description || result.status}`);
     } catch (error) {
       setMessage(`软件健康检查失败：${friendlyError(error)}`);
-    }
+    } finally {setBusy(false);setTransactionProgress(null);}
   };
 
   const previewSoftware = async (item) => {
@@ -472,6 +478,10 @@ export default function App() {
     setTransactionProgress(null);
     try {
       const applied = await api.applyPlan({ plan: planPreview, afterText: planPayload?.afterText, actor: 'local-user' });
+      if(applied.stoppedAfterCompletion) {
+        setMessage('停止请求到达时当前原子步骤已完成；结果已保留，后续验证尚未运行。请重新扫描并查看审计记录。');
+        setPlanPreview(null);setPlanPayload(null);return;
+      }
       if (planPreview.kind === 'platform-onboarding' && applied.status !== 'complete') {
         setMessage(`接入已停止在 ${applied.stoppedAt || applied.currentStep || '未完成步骤'}：${friendlyError(new Error(applied.error || '检查未通过'))}。修正后可点击“预览一键接入／继续”，已通过步骤保留。`);
         return;
@@ -552,7 +562,7 @@ setMessage(planPreview.kind === 'software-launch' ? `连接器答复：${applied
 
       <section className="content">
         <div className="notice" role="status" aria-live="polite"><strong>当前状态：</strong>{message}</div>
-        {transactionProgress && <div className="notice" role="status">正在处理：{transactionProgress.phase || transactionProgress.stage}{transactionProgress.reused ? '（复用有效证据）' : ''}{transactionProgress.path && ` · ${transactionProgress.path}`}{Number.isInteger(transactionProgress.completed) && ` · 已完成 ${transactionProgress.completed}/${transactionProgress.total} 格`}{Number.isFinite(transactionProgress.durationMs) && ` · 本格 ${(transactionProgress.durationMs/1000).toFixed(1)} 秒`}<progress value={transactionProgress.bytesDone ?? transactionProgress.filesDone ?? transactionProgress.completed} max={transactionProgress.bytesTotal || transactionProgress.filesTotal || Math.max(transactionProgress.total || 0,transactionProgress.completed || 1)} />{transactionProgress.platformId && busy && <button className="small-button" onClick={() => api.cancelOnboarding({ workspaceRoot: workspace, platformId: transactionProgress.platformId })}>停止本次操作</button>}</div>}
+        {transactionProgress && <div className="notice" role="status">正在处理：{transactionProgress.phase || transactionProgress.stage}{transactionProgress.reused ? '（复用有效证据）' : ''}{transactionProgress.path && ` · ${transactionProgress.path}`}{Number.isInteger(transactionProgress.completed) && ` · 已完成 ${transactionProgress.completed}/${transactionProgress.total} 格`}{Number.isFinite(transactionProgress.durationMs) && ` · 本格 ${(transactionProgress.durationMs/1000).toFixed(1)} 秒`}<progress value={transactionProgress.bytesDone ?? transactionProgress.filesDone ?? transactionProgress.completed} max={transactionProgress.bytesTotal || transactionProgress.filesTotal || Math.max(transactionProgress.total || 0,transactionProgress.completed || 1)} />{(transactionProgress.jobId || transactionProgress.platformId) && transactionProgress.cancellable!==false && <button className="small-button" onClick={async()=>{const accepted=await cancelTaskProgress(api,transactionProgress,workspace,workspaceSession);setMessage(accepted?'已请求停止，正在等待本轮进程回收与安全写入收口。':'任务已收口，或会话已交给软件 provider。');}}>停止本次操作</button>}</div>}
         <div className="view-container">
           {renderView(activeView)}
         </div>

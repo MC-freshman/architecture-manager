@@ -13,6 +13,8 @@ import time
 
 def main():
     specification = json.loads(sys.stdin.readline())
+    if Path(specification['cancelPath']).exists():
+        return 125
     job = None
     if os.name == 'nt':
         class IO_COUNTERS(ctypes.Structure):

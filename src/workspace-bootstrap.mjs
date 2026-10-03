@@ -1,9 +1,10 @@
+import {runScopedProcess as execFileSync} from './infrastructure/process-scope.mjs';
 // Workspace bootstrap (3.5.0 P10): clone an architecture repository into a
 // fresh local root, verify it looks like an architecture workspace, and hand
 // it to the normal first-scan flow. Local-only, single user, no server.
-import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { existsSync, readdirSync, rmSync, rmdirSync,renameSync, statSync, writeFileSync } from 'node:fs';
+import {randomUUID} from 'node:crypto';
+import { join, resolve,dirname } from 'node:path';
 import { defaultAuditRoot } from './core/paths.mjs';
 import { makeId, output, requirePlan, writeAudit } from './transactions/kernel.mjs';
 
@@ -42,22 +43,25 @@ export function applyWorkspaceClone({ plan }, { actor = 'local-user', auditRoot 
   if (!isEmptyDirectory(plan.target.destination)) throw new Error('CLONE_DESTINATION_NOT_EMPTY');
   const destination = plan.target.destination;
   const id = makeId(plan, now);
-  const createdHere = !existsSync(destination);
+  const staging=destination+'.manager-clone-'+randomUUID();
   try {
-    execFileSync('git', ['-c', 'core.longpaths=true', 'clone', '--no-hardlinks', '--no-checkout', '-c', 'core.longpaths=true', '-c', 'core.autocrlf=false', plan.target.remote, destination], { encoding: 'utf8', timeout: 600000, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024 });
-    const head = execFileSync('git', ['-C', destination, 'rev-parse', 'HEAD'], { encoding: 'utf8', windowsHide: true }).trim();
+    execFileSync('git', ['-c', 'core.longpaths=true', 'clone', '--no-hardlinks', '--no-checkout', '-c', 'core.longpaths=true', '-c', 'core.autocrlf=false', plan.target.remote, staging], { encoding: 'utf8', timeout: 600000, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024 });
+    const head = execFileSync('git', ['-C', staging, 'rev-parse', 'HEAD'], { encoding: 'utf8', windowsHide: true }).trim();
     // Highest-priority local attributes also override nested upstream text=auto.
     // Set before the first checkout; frozen release bytes must equal their Git blobs.
-    writeFileSync(join(destination, '.git/info/attributes'), '* -text\n', { flag: 'wx' });
-    execFileSync('git', ['-C', destination, 'reset', '--hard', head], { encoding: 'utf8', timeout: 600000, windowsHide: true, maxBuffer: 16 * 1024 * 1024 });
-    const missing = ARCHITECTURE_MARKERS.filter((marker) => !existsSync(join(destination, marker)));
+    writeFileSync(join(staging, '.git/info/attributes'), '* -text\n', { flag: 'wx' });
+    execFileSync('git', ['-C', staging, 'reset', '--hard', head], { encoding: 'utf8', timeout: 600000, windowsHide: true, maxBuffer: 16 * 1024 * 1024 });
+    const missing = ARCHITECTURE_MARKERS.filter((marker) => !existsSync(join(staging, marker)));
     if (missing.length > 0) throw Object.assign(new Error(`GIT_CLONE_NOT_ARCHITECTURE:${missing.join(',')}`), { missing });
+    if(!isEmptyDirectory(destination)) throw Error('CLONE_DESTINATION_EXTERNAL_CHANGE');
+    if(existsSync(destination)) rmdirSync(destination); // Never remove a nonempty user directory.
+    renameSync(staging,destination);
     const event = writeAudit({ actor, auditRoot, now, transactionId: id, plan, action: 'workspace-clone', status: 'applied', target: destination, newSha256: head, writePerformed: true });
     return { ...output(event), head, destination, bytePreservingCheckout: true };
   } catch (error) {
     const detail = String(error?.message ?? error);
     writeAudit({ actor, auditRoot, now, transactionId: id, plan, action: 'workspace-clone', status: 'failed', target: destination, error: detail.slice(0, 400) });
-    if (createdHere && existsSync(destination)) rmSync(destination, { recursive: true, force: true });
-    throw detail.includes('GIT_CLONE_NOT_ARCHITECTURE') ? error : new Error('GIT_CLONE_FAILED');
+    if (existsSync(staging) && dirname(staging)===dirname(destination) && staging.startsWith(destination+'.manager-clone-')) rmSync(staging, { recursive: true, force: true });
+    throw /GIT_CLONE_NOT_ARCHITECTURE|CLONE_DESTINATION_EXTERNAL_CHANGE|TASK_CANCELLED/.test(detail) ? error : new Error('GIT_CLONE_FAILED');
   }
 }

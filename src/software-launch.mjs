@@ -1,10 +1,10 @@
+import {runScopedProcess as execFileSync} from './infrastructure/process-scope.mjs';
 import {parseJson as parseJsonText} from './core/json.mjs';
 // Connector-client launch (3.5.0 P5). The manager never dispatches software
 // itself: it relays one JSON request to the platform's own connector exactly
 // the way the engine does, and surfaces whatever the connector answers
 // (INTERACTIVE_REQUIRED / CAPABILITY_UNAVAILABLE / drift) without rewording.
 // allowGuiLaunch stays the gateway's own gate, not the manager's.
-import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { isRegisteredPlatform } from './core/platforms.mjs';

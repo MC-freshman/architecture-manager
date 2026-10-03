@@ -61,7 +61,8 @@ function applyPlatformView(plan, context) {
   const inspected = inspectPlatformDirectory(plan.workspaceRoot, platformId, plan.target.directoryRelative || platformId);
   if (desired && !inspected.validForView) throw new Error('PLATFORM_MARKERS_MISSING');
   const target = localViewPath(plan.workspaceRoot);
-  const before = existsSync(target) ? readFileSync(target, 'utf8') : JSON.stringify({ schema: 'architecture-manager-view/v1', workspaceRoot: resolve(plan.workspaceRoot), enabled: {} }, null, 2);
+  const existed=existsSync(target);
+  const before = existed ? readFileSync(target, 'utf8') : JSON.stringify({ schema: 'architecture-manager-view/v1', workspaceRoot: resolve(plan.workspaceRoot), enabled: {} }, null, 2);
   let state;
   try { state = parseJson(before); } catch { throw new Error('LOCAL_VIEW_CORRUPT'); }
   state.enabled = state.enabled && typeof state.enabled === 'object' ? state.enabled : {};
@@ -79,9 +80,9 @@ function applyPlatformView(plan, context) {
     const event = writeAudit({ ...context, transactionId: id, plan, action: 'platform-view', status: 'applied', target: `platform:${platformId}`, oldSha256: sha256(before), newSha256: sha256(after), checkpointSha256: saved.sha256, checkpointPath: saved.path, writePerformed: true });
     return output(event, saved.path);
   } catch (error) {
-    const recovered=restoreOwnedFiles([{target,before,afterSha256:sha256(after)}],id);
-    if(!recovered.ok) throw Object.assign(new Error('RECOVERY_EXTERNAL_CHANGE'),{checkpointPath:saved.path,recovery:recovered});
-    throw Object.assign(new Error(String(error?.message ?? error)), { checkpointPath: saved.path });
+    const recovered=restoreOwnedFiles([{target,before:existed?before:null,afterSha256:sha256(after)}],id);
+    const audit=writeAudit({...context,transactionId:id,plan,action:plan.kind,status:recovered.ok?'recovered-after-failure':'failed-external-change',target,checkpointPath:saved.path,error:recovered.ok?error.message:'RECOVERY_EXTERNAL_CHANGE'});
+    throw Object.assign(new Error(recovered.ok?error.message:'RECOVERY_EXTERNAL_CHANGE'),{audit,checkpointPath:saved.path,recovery:recovered});
   }
 }
 
@@ -110,8 +111,8 @@ function applyRegistry(plan, afterText, context) {
     return output(writeAudit({ ...context, transactionId: id, plan, action: 'registry-edit', status: 'applied', target: relativeTarget, oldSha256: expectedOld, newSha256: expectedNew, checkpointSha256: saved.sha256, checkpointPath: saved.path, writePerformed: true }), saved.path);
   } catch (error) {
     const recovered=restoreOwnedFiles([{target,before,afterSha256:expectedNew}],id);
-    if(!recovered.ok) throw Object.assign(new Error('RECOVERY_EXTERNAL_CHANGE'),{checkpointPath:saved.path,recovery:recovered});
-    throw Object.assign(new Error(String(error?.message ?? error)), { checkpointPath: saved.path });
+    const audit=writeAudit({...context,transactionId:id,plan,action:plan.kind,status:recovered.ok?'recovered-after-failure':'failed-external-change',target:relativeTarget,checkpointPath:saved.path,error:recovered.ok?error.message:'RECOVERY_EXTERNAL_CHANGE'});
+    throw Object.assign(new Error(recovered.ok?error.message:'RECOVERY_EXTERNAL_CHANGE'),{audit,checkpointPath:saved.path,recovery:recovered});
   }
 }
 
@@ -181,8 +182,8 @@ function applyDefectBook(plan, afterText, context) {
     return output(writeAudit({ ...context, transactionId: id, plan, action: 'defect-book-edit', status: 'applied', target: relativeTarget, oldSha256: expectedOld, newSha256: expectedNew, checkpointSha256: saved.sha256, checkpointPath: saved.path, writePerformed: true }), saved.path);
   } catch (error) {
     const recovered=restoreOwnedFiles([{target,before,afterSha256:expectedNew}],id);
-    if(!recovered.ok) {writeAudit({...context,transactionId:id,plan,action:plan.kind,status:'failed-external-change',target:relativeTarget,checkpointPath:saved.path,error:'RECOVERY_EXTERNAL_CHANGE'});throw Object.assign(new Error('RECOVERY_EXTERNAL_CHANGE'),{checkpointPath:saved.path,recovery:recovered});}
-    throw Object.assign(new Error(String(error?.message ?? error)), { checkpointPath: saved.path });
+    const audit=writeAudit({...context,transactionId:id,plan,action:plan.kind,status:recovered.ok?'recovered-after-failure':'failed-external-change',target:relativeTarget,checkpointPath:saved.path,error:recovered.ok?error.message:'RECOVERY_EXTERNAL_CHANGE'});
+    throw Object.assign(new Error(recovered.ok?error.message:'RECOVERY_EXTERNAL_CHANGE'),{audit,checkpointPath:saved.path,recovery:recovered});
   }
 }
 

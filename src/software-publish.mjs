@@ -1,9 +1,9 @@
+import {runScopedProcess as execFileSync} from './infrastructure/process-scope.mjs';
 import {restoreOwnedFiles,removeOwnedDirectory} from './transactions/recovery.mjs';
 import {parseJson as parseJsonText} from './core/json.mjs';
 import { compareStableVersions } from './core/versions.mjs';
 import { verifyFrozenDirectory } from './domains/resources/integrity.mjs';
 import { validateFrozenResource } from './domains/resources/versions.mjs';
-import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { defaultAuditRoot } from './core/paths.mjs';

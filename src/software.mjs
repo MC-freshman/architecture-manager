@@ -1,3 +1,4 @@
+import {connectorHealth} from './domains/software/health.mjs';
 import {parseJson as parseJsonText} from './core/json.mjs';
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
@@ -97,22 +98,10 @@ function resolveVersionCall(software, recipe) {
   return { executable, args, cwd: bodyPath || undefined };
 }
 
-export function healthSoftware(root, softwareId) {
-  if (typeof softwareId !== 'string' || !SOFTWARE_ID.test(softwareId)) throw new Error('INVALID_SOFTWARE_ID');
-  const software = readSoftware(root, softwareId);
-  if (!software) throw new Error('SOFTWARE_NOT_REGISTERED');
-  if (software.bodyExists === false) return { ...software, status: 'SOFTWARE_NOT_INSTALLED', exitCode: null, output: null, writePerformed: false };
-  if (!software.versionCall) return { ...software, status: 'INTERACTIVE_REQUIRED', exitCode: null, output: null, writePerformed: false };
-  const versionRoot = resolve(root, software.versionRoot);
-  const recipe = readJson(join(versionRoot, 'recipes', 'windows.json'));
-  const call = resolveVersionCall(software, recipe);
-  if (!call || !call.executable || !existsSync(call.executable)) return { ...software, status: 'SOFTWARE_NOT_INSTALLED', exitCode: null, output: null, writePerformed: false };
-  try {
-    const output = execFileSync(call.executable, call.args, { cwd: call.cwd, encoding: 'utf8', timeout: 30000, shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-    return { ...software, status: 'PASS', exitCode: 0, output: output.trim(), writePerformed: false };
-  } catch (error) {
-    return { ...software, status: 'HEALTH_CHECK_FAILED', exitCode: error.status ?? null, output: String(error.stdout || error.stderr || error.message).trim(), writePerformed: false };
-  }
+export async function healthSoftware(root,softwareId,platformId,options={}) {
+  if(typeof softwareId!=='string' || !SOFTWARE_ID.test(softwareId)) throw Error('INVALID_SOFTWARE_ID');
+  const software=readSoftware(root,softwareId);if(!software) throw Error('SOFTWARE_NOT_REGISTERED');
+  return {...software,...await connectorHealth(root,softwareId,platformId,options)};
 }
 
 export function buildSoftwareLaunchPlan({ workspaceRoot, softwareId, platformId = null, mode = 'health', now = new Date().toISOString() }) {

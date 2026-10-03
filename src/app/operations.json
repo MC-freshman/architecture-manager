@@ -23,7 +23,10 @@
     },
     "scanWorkspace": {
       "channel": "workspace:scan",
-      "phase": "query"
+      "phase": "query",
+      "backend": "scanWorkspace",
+      "argumentsStyle": "root",
+      "taskMode": "owned"
     },
     "inspectPlatform": {
       "channel": "platform:inspect",
@@ -39,7 +42,10 @@
     },
     "runPlatformCheck": {
       "channel": "platform:check",
-      "phase": "execute"
+      "phase": "execute",
+      "backend": "runPlatformCheck",
+      "argumentsStyle": "input",
+      "taskMode": "owned"
     },
     "previewPlatformPlan": {
       "channel": "plan:platform-view",
@@ -47,15 +53,24 @@
     },
     "previewResourcePlan": {
       "channel": "plan:resource-pointer",
-      "phase": "plan"
+      "phase": "plan",
+      "backend": "buildResourcePointerPlan",
+      "argumentsStyle": "input",
+      "taskMode": "owned"
     },
     "readCatalogEntry": {
       "channel": "catalog:read",
-      "phase": "query"
+      "phase": "query",
+      "backend": "readCatalogEntry",
+      "argumentsStyle": "input",
+      "taskMode": "owned"
     },
     "readSkillContent": {
       "channel": "skill:read",
-      "phase": "query"
+      "phase": "query",
+      "backend": "readSkillContent",
+      "argumentsStyle": "input",
+      "taskMode": "owned"
     },
     "selectCatalog": {
       "channel": "catalog:select",
@@ -63,11 +78,17 @@
     },
     "previewRegistryPlan": {
       "channel": "plan:registry",
-      "phase": "plan"
+      "phase": "plan",
+      "backend": "buildRegistryPlan",
+      "argumentsStyle": "input",
+      "taskMode": "owned"
     },
     "readDocument": {
       "channel": "document:read",
-      "phase": "query"
+      "phase": "query",
+      "backend": "readDocument",
+      "argumentsStyle": "document",
+      "taskMode": "owned"
     },
     "previewDocumentPlan": {
       "channel": "plan:document",
@@ -75,7 +96,10 @@
     },
     "softwareHealth": {
       "channel": "software:health",
-      "phase": "execute"
+      "phase": "execute",
+      "backend": "healthSoftware",
+      "argumentsStyle": "health",
+      "taskMode": "owned"
     },
     "previewSoftwarePlan": {
       "channel": "plan:software",
@@ -83,7 +107,10 @@
     },
     "previewSoftwareImportPlan": {
       "channel": "plan:software-import",
-      "phase": "plan"
+      "phase": "plan",
+      "backend": "buildSoftwareImportPlan",
+      "argumentsStyle": "input",
+      "taskMode": "owned"
     },
     "listSoftwareIntakes": {
       "channel": "software:intakes",
@@ -91,7 +118,10 @@
     },
     "previewSoftwareRecipePlan": {
       "channel": "plan:software-recipe",
-      "phase": "plan"
+      "phase": "plan",
+      "backend": "buildSoftwareRecipePlan",
+      "argumentsStyle": "input",
+      "taskMode": "owned"
     },
     "listSoftwareRecoveries": {
       "channel": "software:recoveries",
@@ -111,15 +141,24 @@
     },
     "inspectGit": {
       "channel": "git:inspect",
-      "phase": "query"
+      "phase": "query",
+      "backend": "inspectGit",
+      "argumentsStyle": "root",
+      "taskMode": "owned"
     },
     "scanSensitiveFiles": {
       "channel": "git:sensitive-scan",
-      "phase": "query"
+      "phase": "query",
+      "backend": "scanSensitiveFiles",
+      "argumentsStyle": "root",
+      "taskMode": "owned"
     },
     "previewGitPlan": {
       "channel": "plan:git",
-      "phase": "plan"
+      "phase": "plan",
+      "backend": "buildGitPlan",
+      "argumentsStyle": "input",
+      "taskMode": "owned"
     },
     "listIntegrationTargets": {
       "channel": "integration:targets",
@@ -135,7 +174,10 @@
     },
     "previewIntegrationPlan": {
       "channel": "plan:integration",
-      "phase": "plan"
+      "phase": "plan",
+      "backend": "buildIntegrationPlan",
+      "argumentsStyle": "input",
+      "taskMode": "owned"
     },
     "listRunLedger": {
       "channel": "runs:ledger",
@@ -143,7 +185,10 @@
     },
     "readDefectBook": {
       "channel": "defects:read",
-      "phase": "query"
+      "phase": "query",
+      "backend": "readDefectBook",
+      "argumentsStyle": "root",
+      "taskMode": "owned"
     },
     "verifyDefectBook": {
       "channel": "defects:verify",
@@ -163,11 +208,17 @@
     },
     "previewReleasePlan": {
       "channel": "plan:release",
-      "phase": "plan"
+      "phase": "plan",
+      "backend": "buildReleasePlan",
+      "argumentsStyle": "input",
+      "taskMode": "owned"
     },
     "listResourceReferences": {
       "channel": "releases:references",
-      "phase": "query"
+      "phase": "query",
+      "backend": "listResourceReferences",
+      "argumentsStyle": "references",
+      "taskMode": "owned"
     },
     "readRegistryBaseline": {
       "channel": "releases:registry-baseline",
@@ -179,19 +230,31 @@
     },
     "parseImplementationTables": {
       "channel": "plans:parse",
-      "phase": "query"
+      "phase": "query",
+      "backend": "parseImplementationTables",
+      "argumentsStyle": "root",
+      "taskMode": "owned"
     },
     "buildDocsSite": {
       "channel": "docs:build",
-      "phase": "execute"
+      "phase": "execute",
+      "backend": "buildDocsSite",
+      "argumentsStyle": "root",
+      "taskMode": "owned"
     },
     "checkDocsLinks": {
       "channel": "docs:conform",
-      "phase": "execute"
+      "phase": "execute",
+      "backend": "checkDocsLinks",
+      "argumentsStyle": "root",
+      "taskMode": "owned"
     },
     "documentDiff": {
       "channel": "document:diff",
-      "phase": "query"
+      "phase": "query",
+      "backend": "diffDocument",
+      "argumentsStyle": "document",
+      "taskMode": "owned"
     },
     "previewPlatformScaffoldPlan": {
       "channel": "plan:platform-scaffold",
@@ -207,7 +270,10 @@
     },
     "runOnboardingPipeline": {
       "channel": "onboarding:pipeline",
-      "phase": "execute"
+      "phase": "execute",
+      "backend": "executeOnboardingChecks",
+      "argumentsStyle": "input",
+      "taskMode": "owned"
     },
     "readOnboardingConfig": {
       "channel": "onboarding:config",
@@ -239,7 +305,10 @@
     },
     "probeOnboardingClient": {
       "channel": "onboarding:client-probe",
-      "phase": "execute"
+      "phase": "execute",
+      "backend": "probeOnboardingClient",
+      "argumentsStyle": "input",
+      "taskMode": "owned"
     },
     "previewOnboardingProvidersPlan": {
       "channel": "plan:platform-providers",
@@ -247,7 +316,10 @@
     },
     "probeOnboardingCapabilities": {
       "channel": "onboarding:capability-probe",
-      "phase": "execute"
+      "phase": "execute",
+      "backend": "probeOnboardingCapabilities",
+      "argumentsStyle": "input",
+      "taskMode": "owned"
     },
     "previewOnboardingAttestationPlan": {
       "channel": "plan:platform-attestation",
@@ -259,7 +331,10 @@
     },
     "readOnboardingState": {
       "channel": "onboarding:state",
-      "phase": "query"
+      "phase": "query",
+      "backend": "readOnboardingState",
+      "argumentsStyle": "input",
+      "taskMode": "owned"
     },
     "cancelOnboarding": {
       "channel": "onboarding:cancel",
@@ -283,15 +358,28 @@
     },
     "applyWorkspaceClone": {
       "channel": "workspace:clone",
-      "phase": "execute"
+      "phase": "execute",
+      "backend": "applyWorkspaceClone",
+      "argumentsStyle": "clone",
+      "taskMode": "owned"
     },
     "applyPlan": {
       "channel": "transaction:apply",
-      "phase": "execute"
+      "phase": "execute",
+      "backend": "applyPlan",
+      "argumentsStyle": "input",
+      "taskMode": "owned"
     },
     "verifyPlan": {
       "channel": "transaction:verify",
-      "phase": "verify"
+      "phase": "verify",
+      "backend": "verifyPlanTarget",
+      "argumentsStyle": "input",
+      "taskMode": "owned"
+    },
+    "cancelTask": {
+      "channel": "task:cancel",
+      "phase": "execute"
     }
   },
   "planKinds": [
