@@ -1,4 +1,5 @@
 import {TaskProgress} from './shared/TaskProgress.jsx';
+import {BodyIntakePanel} from './features/intake/BodyIntakePanel.jsx';
 import { useWorkspaceState } from './features/workspace/useWorkspaceState.mjs';
 import { usePlanState } from './shared/usePlanState.mjs';
 import { taskClient,progressMatches } from './shared/task-client.mjs';
@@ -68,6 +69,7 @@ export default function App() {
   const VIEWS = [
     { id: 'dashboard', label: '仪表盘' },
     { id: 'resources', label: '资源' },
+    { id: 'intake', label: '导入本体' },
     { id: 'platform', label: '平台与接入' },
     { id: 'runs', label: '运行' },
     { id: 'governance', label: '治理' },
@@ -520,6 +522,7 @@ setMessage(planPreview.kind === 'software-launch' ? `连接器答复：${applied
         <ReleasePanel api={api} workspace={workspace} resources={resources} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} setMessage={setMessage} friendlyError={friendlyError} />
         <CatalogPanel api={api} workspace={workspace} inventory={inventory} catalogFilter={catalogFilter} setCatalogFilter={setCatalogFilter} agents={agents} skills={skills} skillFilter={skillFilter} setSkillFilter={setSkillFilter} catalogDetail={catalogDetail} setCatalogDetail={setCatalogDetail} skillDetail={skillDetail} setSkillDetail={setSkillDetail} openCatalog={openCatalog} previewRegistryAction={previewRegistryAction} friendlyError={friendlyError} setMessage={setMessage} />
       </>;
+      case 'intake': return <BodyIntakePanel key={workspaceSession} api={api} workspace={workspace} inventory={inventory} setMessage={setMessage} />;
       case 'platform': return <>
         {!workspace && <ClonePanel api={api} onCloned={(root) => scan(root)} setMessage={setMessage} friendlyError={friendlyError} />}
         <OnboardPanel api={api} workspace={workspace} inventory={inventory} busy={busy} setPlanPreview={setPlanPreview} setPlanPayload={setPlanPayload} setMessage={setMessage} friendlyError={friendlyError} />

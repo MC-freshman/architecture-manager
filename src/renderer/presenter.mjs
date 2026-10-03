@@ -2,9 +2,23 @@ import declarations from '../app/operations.json' with { type: 'json' };
 export const PLAN_WRITE_KINDS = Object.freeze(declarations.planKinds);
 
 export function friendlyError(error) {
-  const code = String(error?.message ?? error);
+  const code = String(error?.message ?? error).replace(/^Error invoking remote method '[^']+':\s*/, '').replace(/^(?:Error:\s*)+/,'');
   const [key, ...details] = code.split(':');
   const hints = {
+    INTAKE_SOURCE_REQUIRED:'请选择已有文件、文件夹或 ZIP 作为本体来源。',
+    INTAKE_SOURCE_MISSING:'来源已不存在，请重新选择；管理台不会创建假的本体。',
+    INTAKE_LINK_NOT_ALLOWED:'来源包含符号链接或目录联接，无法保证读写边界。请改选普通目录或普通文件。',
+    INTAKE_UNSAFE_PATH:'包内路径越界或不适合 Windows 文件名，已停止识别。原件保留，请修正压缩包。',
+    INTAKE_DUPLICATE_PATH:'包内有重复或大小写冲突的路径，无法确定要接入哪一份。',
+    INTAKE_SOURCE_CHANGED:'来源在预览后发生变化，请重新识别并核对计划；原件没有被覆盖。',
+    INTAKE_TEXT_ENCODING:'正文需要先转换为 UTF-8（可含 BOM），管理台不会猜测编码后丢失文字。',
+    INTAKE_ZIP_FILENAME_ENCODING:'ZIP 文件名编码无法确定，请用 UTF-8 文件名重新打包。',
+    INTAKE_ZIP64_REQUIRED:'这份 ZIP 使用 ZIP64，请先解压为普通文件夹再选择；无需手工整理成三仓结构。',
+    INTAKE_ZIP_INVALID:'压缩包结构不完整或不一致，请先确认能正常解压，再选择本体。',
+    INTAKE_ZIP_CONTENT_MISMATCH:'压缩内容与清单校验不符，可能已损坏，已停止导入。',
+    INTAKE_ZIP_ENCRYPTED:'这是加密 ZIP，请在本机解密后选择普通目录。密码不会写入导入计划。',
+    INTAKE_SOURCE_EMPTY:'排除缓存和凭据后没有可接入文件，请选择实际本体。',
+    INTAKE_ENTRY_INVALID:'请选择清单里可纳入的正文或程序入口；被排除文件不能作为入口。',
     RESOURCE_VERSION_CANDIDATE:'这个版本仍是开发候选，尚不能采用。请使用已发布版本，或等候选验证并发布后重新读取。',
     VERSION_PAIR_MISMATCH:'引擎与检查器没有按依赖锁配对，请选择完整推荐组合，不能只切其中一件。',
     TASK_CANCELLED:'已停止本次任务。已完成的安全步骤和证据保留，可重新扫描后继续。',

@@ -1,7 +1,7 @@
 import {existsSync,readFileSync,statSync} from 'node:fs';
 import {join,relative} from 'node:path';
 import {sha256} from '../../core/hash.mjs';
-import {readJson,inside} from '../../core/json.mjs';
+import {readJson,inside,stableJson} from '../../core/json.mjs';
 import {targetPath} from '../../core/paths.mjs';
 import {validateFrozenResource} from '../resources/versions.mjs';
 import {verifyFrozenDirectory} from '../resources/integrity.mjs';
@@ -9,11 +9,7 @@ import {parseDefinition} from '../resources/contracts.mjs';
 import {certificationHasher} from './content-cache.mjs';
 import {platformConfigPath} from './binding.mjs';
 
-export function stableJson(value) {
-  if(Array.isArray(value)) return '['+value.map(stableJson).join(',')+']';
-  if(value && typeof value==='object') return '{'+Object.keys(value).sort().filter(key=>value[key]!==undefined).map(key=>JSON.stringify(key)+':'+stableJson(value[key])).join(',')+'}';
-  return JSON.stringify(value);
-}
+export {stableJson} from '../../core/json.mjs';
 const digest=value=>sha256(stableJson(value));
 export const resourceKey=row=>`${row.kind}:${row.id}`;
 const repositories={workflow:'tool',agent:'agent',software:'software'};

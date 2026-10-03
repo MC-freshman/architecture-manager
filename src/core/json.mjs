@@ -8,6 +8,12 @@ export function readJson(path) {
 
 export function parseJson(text) { return JSON.parse(String(text).replace(/^\uFEFF/, '')); }
 
+export function stableJson(value) {
+  if(Array.isArray(value)) return '['+value.map(stableJson).join(',')+']';
+  if(value && typeof value==='object') return '{'+Object.keys(value).sort().filter(key=>value[key]!==undefined).map(key=>JSON.stringify(key)+':'+stableJson(value[key])).join(',')+'}';
+  return JSON.stringify(value);
+}
+
 export function inside(parent, target) {
   const rel = relative(parent, target);
   return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !/^[A-Za-z]:/i.test(rel));

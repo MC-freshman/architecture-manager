@@ -48,11 +48,11 @@
       "taskMode": "owned"
     },
     "previewPlatformCheck": {
-      "channel":"platform:check-preview",
-      "phase":"query",
-      "backend":"previewPlatformCheck",
-      "argumentsStyle":"input",
-      "taskMode":"owned"
+      "channel": "platform:check-preview",
+      "phase": "query",
+      "backend": "previewPlatformCheck",
+      "argumentsStyle": "input",
+      "taskMode": "owned"
     },
     "previewPlatformPlan": {
       "channel": "plan:platform-view",
@@ -285,9 +285,9 @@
     "readOnboardingConfig": {
       "channel": "onboarding:config",
       "phase": "query",
-      "backend":"readOnboardingConfig",
-      "argumentsStyle":"input",
-      "taskMode":"owned"
+      "backend": "readOnboardingConfig",
+      "argumentsStyle": "input",
+      "taskMode": "owned"
     },
     "previewOnboardingConfigPlan": {
       "channel": "plan:platform-configuration",
@@ -390,6 +390,17 @@
     "cancelTask": {
       "channel": "task:cancel",
       "phase": "execute"
+    },
+    "selectBodySource": {
+      "channel": "intake:select-source",
+      "phase": "ui"
+    },
+    "scanExternalBody": {
+      "channel": "intake:scan-source",
+      "phase": "query",
+      "backend": "scanExternalBody",
+      "argumentsStyle": "input",
+      "taskMode": "owned"
     }
   },
   "planKinds": [

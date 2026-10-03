@@ -138,6 +138,12 @@ function registerIpc() {
     const result = await dialog.showOpenDialog({ title: '选择平台目录', properties: ['openDirectory'] });
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
+  handleOperation('intake:select-source',async(_event,input)=>{
+    if(!['file','directory'].includes(input?.kind))throw Error('INTAKE_FILE_TYPE');
+    const result=await dialog.showOpenDialog({title:'选择要接入的本体来源',properties:[input.kind==='directory'?'openDirectory':'openFile']});
+    return result.canceled?null:result.filePaths[0] ?? null;
+  });
+  handleOperation('intake:scan-source',()=>{throw Error('IPC_BACKEND_REQUIRED');});
   handleOperation('workspace:scan', (_event, root) => { const result = scanWorkspace(root); rememberWorkspace(result.workspaceRoot); return result; });
   handleOperation('platform:refresh', (_event, input) => refreshPlatformInventory(input));
   handleOperation('platform:inspect', (_event, input) => inspectPlatformDirectory(input.workspaceRoot, input.platformId, input.directoryRelative));

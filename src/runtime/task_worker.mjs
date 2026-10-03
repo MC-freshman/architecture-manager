@@ -22,6 +22,7 @@ try {
   if(['executeOnboardingChecks','probeOnboardingCapabilities','probeOnboardingClient'].includes(method)) parameters.push({onProgress:progress,registerCancel});
   if(method==='buildSoftwareRecipePlan') parameters.push({});
   if(method==='healthSoftware') parameters.push({onProgress:progress,registerCancel});
+  if(method==='scanExternalBody') parameters.push({onProgress:progress});
   const deferCancellation=method==='applyPlan' && ['git-commit','git-branch','git-tag','git-rollback'].includes(input?.plan?.kind);
   const result=await withProcessScope({...context,deferCancellation,onProgress:progress},()=>api[method](...parameters));
   if(processScopeCancelled(context) && context.phase==='query') throw Error('TASK_CANCELLED');
