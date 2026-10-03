@@ -19,6 +19,15 @@ export function parseDefinition(text) {
   if(document.errors.length) throw Error('WORKFLOW_DEFINITION_INVALID');
   return document.toJS({maxAliasCount:0});
 }
+export function promptBlock(text,anchor) {
+  if(typeof text!=='string')throw Error('RESOURCE_PROMPT_ANCHOR_INVALID');
+  const tokens=[...text.matchAll(/<!--\s*(\/?)stage:([A-Za-z0-9_-]+)\s*-->/g)],opened=new Set();let active=null,start=0,result=null;
+  for(const token of tokens) {
+    if(!token[1]) {if(active || opened.has(token[2]))throw Error('RESOURCE_PROMPT_ANCHOR_INVALID');opened.add(token[2]);active=token[2];start=token.index+token[0].length;}
+    else {if(active!==token[2])throw Error('RESOURCE_PROMPT_ANCHOR_INVALID');if(active===anchor)result=text.slice(start,token.index).trim();active=null;}
+  }
+  if(active || result===null || !result.trim())throw Error('RESOURCE_PROMPT_ANCHOR_INVALID');return result;
+}
 export function validateResourceContent({repository,resourceId,version,read,has}) {
   const manifest=parseJson(read('manifest.json'));
   if(manifest.id!==resourceId || manifest.version!==version) throw Error('RESOURCE_IDENTITY_MISMATCH');
@@ -38,8 +47,12 @@ export function validateResourceContent({repository,resourceId,version,read,has}
       for(const field of ['promptRef','repairPromptRef','script','repairScript']) if(stage[field]) {
         const name=stage[field].replace(/^workflow:/,'').split('#')[0];
         if(!exists(name)) throw Error('RESOURCE_ENTRY_MISSING:'+name);
+        if(['promptRef','repairPromptRef'].includes(field))promptBlock(read(name),stage[field].split('#stage:')[1]);
       }
     }
+    const visited=new Set(),visiting=new Set();
+    const visit=id=>{if(visiting.has(id))throw Error('WORKFLOW_STAGE_CYCLE');if(visited.has(id))return;visiting.add(id);for(const parent of definition.stages.find(stage=>stage.id===id).dependsOn || [])visit(parent);visiting.delete(id);visited.add(id);};
+    for(const id of ids)visit(id);
     if(definition.schema==='ai-workflow-definition/v3') {
       if(!definition.scenarios?.[definition.defaultScenario]) throw Error('WORKFLOW_SCENARIO_MISSING');
       if(!Array.isArray(definition.requiredStages) || definition.requiredStages.some(id=>!ids.has(id))) throw Error('WORKFLOW_REQUIRED_STAGE_MISSING');

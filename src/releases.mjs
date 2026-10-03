@@ -1,3 +1,8 @@
+import {assertBodyIdentity,readBodyEditor,listBodyDependencies,buildAgentSkillBodyPlan} from './domains/intake/shared-body.mjs';
+import {readToolBodyEditor,buildToolBodyPlan} from './domains/intake/tool-body.mjs';
+import {draftTextSource} from './domains/intake/sources.mjs';
+import {parseDefinition} from './domains/resources/contracts.mjs';
+import {verifyIntakePublication} from './domains/intake/publication.mjs';
 import {parseJson as parseJsonText} from './core/json.mjs';
 import {removeOwnedDirectory} from './transactions/recovery.mjs';
 import { validateResourceContent } from './domains/resources/contracts.mjs';
@@ -8,7 +13,6 @@ import { verifyFrozenDirectory } from './domains/resources/integrity.mjs';
 // touches published bytes; adoption stays a separate resource-pointer plan
 // (发布 ≠ 采纳). Every file is covered by a regenerated SHA256SUMS and
 // re-verified after write.
-import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { sha256 } from './core/hash.mjs';
@@ -18,124 +22,30 @@ import { atomicWrite, makeId, output, requirePlan, writeAudit } from './transact
 const SEMVER = /^\d+\.\d+\.\d+$/;
 const RESOURCE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const REPOSITORIES = { tool: { key: 'workflows' }, agent: { key: 'agents' } };
-const EXCLUDED_PARTS = new Set(['__pycache__', '.pytest_cache', 'node_modules']);
-const EXCLUDED_FILES = new Set(['SHA256SUMS']);
-const BINARY_SUFFIXES = ['.png', '.jpg', '.zip', '.exe', '.dll', '.pdf', '.ico'];
-
-function fileHash(path) {
-  return createHash('sha256').update(readFileSync(path)).digest('hex');
-}
-
-function isBinary(buffer) {
-  return buffer.includes(0);
-}
-
-function listFilesRecursive(directory, prefix = '') {
-  const out = [];
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
-    if (entry.isDirectory()) {
-      if (EXCLUDED_PARTS.has(entry.name)) continue;
-      out.push(...listFilesRecursive(join(directory, entry.name), relativePath));
-    } else if (!EXCLUDED_FILES.has(entry.name)) {
-      out.push(relativePath);
-    }
+function listFilesRecursive(directory,prefix='') {
+  const out=[];
+  for(const entry of readdirSync(directory,{withFileTypes:true})) {
+    if(['__pycache__','.pytest_cache','node_modules','SHA256SUMS'].includes(entry.name))continue;
+    const path=prefix+entry.name;
+    if(entry.isDirectory())out.push(...listFilesRecursive(join(directory,entry.name),path+'/'));else out.push(path);
   }
   return out.sort();
 }
 
-function manifestFor(repository, id, version) {
-  if (repository === 'tool') {
-    return { schema: 'ai-tool-manifest/v2', id, version, entry: 'workflow.yaml', inputFormat: 'text', outputFormat: 'json', permissions: [], dependencies: {} };
+export async function buildReleasePlan({workspaceRoot,platformId,repository,resourceId,targetVersion,upgradeFrom=null,definitionOverride=null,content=null,runnerWorkflow=null,adopt=false,displayName=null}) {
+  if(!['tool','agent'].includes(repository))throw Error('RELEASE_REPOSITORY_INVALID');
+  assertBodyIdentity(resourceId,targetVersion);
+  if(existsSync(targetPath(workspaceRoot,repository+'/'+resourceId+'/versions/'+targetVersion)))throw Error('RELEASE_VERSION_EXISTS');
+  if(upgradeFrom && !existsSync(targetPath(workspaceRoot,repository+'/'+resourceId+'/versions/'+upgradeFrom)))throw Error('RELEASE_UPGRADE_SOURCE_MISSING');
+  if(repository==='tool') {
+    const editor=upgradeFrom?await readToolBodyEditor({workspaceRoot,platformId,resourceId,version:upgradeFrom}):null;
+    return buildToolBodyPlan({workspaceRoot,platformId,intake:editor?.intake,resourceId,version:targetVersion,displayName,content:content ?? undefined,manifest:editor?.manifest,definition:definitionOverride?parseDefinition(definitionOverride):editor?.definition,dependencies:editor?.fields.dependencies || {workflows:{},skills:{},packs:{}},adopt});
   }
-  return { schema: 'ai-agent-manifest/v2', id, version, prompt: 'prompt.md', workflows: [], permissions: [], model: null };
-}
-
-function sourceFor(repository, id, version, upgradeFrom) {
-  return {
-    schema: 'ai-release-source/v1',
-    repository,
-    id,
-    version,
-    generatedBy: 'architecture-manager release wizard (3.5.0 P4)',
-    upgradeFrom: upgradeFrom || null,
-    releaseScope: 'staged-by-manager; complete SOURCE fields before adoption',
-    pairingRequired: repository === 'tool' ? ['repo-lint pairing (D-52): raising tool/repo-lint pointer must pair with each platform scannerRelease'] : []
-  };
-}
-
-function definitionFor(repository, id, version) {
-  if (repository === 'tool') {
-    return { path: 'workflow.yaml', content: `schema: ai-workflow-definition/v3\nid: ${id}\nversion: "${version}"\nstages: []\n` };
-  }
-  return { path: 'prompt.md', content: `# ${id} ${version}\n\n(prompt body)\n` };
-}
-
-export function buildReleasePlan({ workspaceRoot, repository, resourceId, targetVersion, upgradeFrom = null, definitionOverride = null, note = null, now = new Date().toISOString() }) {
-  if (!REPOSITORIES[repository]) throw new Error('RELEASE_REPOSITORY_INVALID');
-  if (!RESOURCE_ID.test(String(resourceId || ''))) throw new Error('RELEASE_RESOURCE_ID_INVALID');
-  if (!SEMVER.test(String(targetVersion || ''))) throw new Error('RELEASE_SEMVER_INVALID');
-  const root = resolve(workspaceRoot);
-  const resourceRoot = targetPath(root, join(repository, resourceId));
-  const currentPath = join(resourceRoot, 'current.json');
-  if (!existsSync(currentPath)) throw new Error('RESOURCE_NOT_FOUND');
-  const versionRoot = join(resourceRoot, 'versions', targetVersion);
-  if (existsSync(versionRoot)) throw new Error('RELEASE_VERSION_EXISTS');
-  const files = [];
-  let copyFrom = null;
-  if (upgradeFrom) {
-    if (!SEMVER.test(String(upgradeFrom))) throw new Error('RELEASE_SEMVER_INVALID');
-    const sourceRoot = join(resourceRoot, 'versions', upgradeFrom);
-    if (!existsSync(sourceRoot)) throw new Error('RELEASE_UPGRADE_SOURCE_MISSING');
-    const binaries = [];
-    for (const relativePath of listFilesRecursive(sourceRoot)) {
-      const buffer = readFileSync(join(sourceRoot, relativePath));
-      if (relativePath === 'manifest.json') {
-        const manifest = parseJsonText(buffer.toString('utf8'));
-        files.push({ path: relativePath, encoding: 'utf8', content: `${JSON.stringify({ ...manifest, version: targetVersion }, null, 2)}\n` });
-      } else if (relativePath === 'SOURCE.json') {
-        const source = parseJsonText(buffer.toString('utf8'));
-        files.push({ path: relativePath, encoding: 'utf8', content: `${JSON.stringify({ ...source, version: targetVersion, upgradeFrom }, null, 2)}\n` });
-      } else if (isBinary(buffer) || BINARY_SUFFIXES.some((suffix) => relativePath.endsWith(suffix))) {
-        binaries.push(relativePath);
-      } else {
-        files.push({ path: relativePath, encoding: 'utf8', content: buffer.toString('utf8') });
-      }
-    }
-    copyFrom = { version: upgradeFrom, files: binaries.map((relativePath) => ({ path: relativePath, sha256: fileHash(join(sourceRoot, relativePath)) })) };
-  }
-  const hasManifest = files.some((file) => file.path === 'manifest.json');
-  if (!hasManifest) files.unshift({ path: 'manifest.json', encoding: 'utf8', content: `${JSON.stringify(manifestFor(repository, resourceId, targetVersion), null, 2)}\n` });
-  if (!files.some((file) => file.path === 'SOURCE.json')) {
-    files.splice(1, 0, { path: 'SOURCE.json', encoding: 'utf8', content: `${JSON.stringify(sourceFor(repository, resourceId, targetVersion, upgradeFrom), null, 2)}\n` });
-  }
-  const definition = definitionFor(repository, resourceId, targetVersion);
-  if (!files.some((file) => file.path === definition.path)) files.push({ ...definition });
-  if (typeof definitionOverride === 'string' && definitionOverride.trim() !== '') {
-    const index = files.findIndex((file) => file.path === definition.path);
-    files[index] = { path: definition.path, encoding: 'utf8', content: definitionOverride };
-  }
-  if (!files.some((file) => file.path.startsWith('tests/'))) files.push({ path: 'tests/.gitkeep', encoding: 'utf8', content: '' });
-  const manifest = parseJsonText(files.find((file) => file.path === 'manifest.json').content);
-  if (manifest.version !== targetVersion) throw new Error('RELEASE_MANIFEST_VERSION_MISMATCH');
-  const candidate = new Map(files.map(file=>[file.path,file.content]));
-  validateResourceContent({repository,resourceId,version:targetVersion,read:name=>candidate.get(name),has:name=>candidate.has(name)});
-  const sumsEntries = files.map((file) => `${sha256(file.content)}  ${file.path}`);
-  for (const binary of copyFrom?.files || []) sumsEntries.push(`${binary.sha256}  ${binary.path}`);
-  const sums = sumsEntries.sort().join('\n') + '\n';
-  return {
-    schema: 'architecture-manager-plan/v1',
-    planId: `release-${repository}-${resourceId}-${targetVersion}-${now.replace(/[^0-9]/g, '').slice(0, 17)}`,
-    kind: 'release-publish',
-    workspaceRoot: root,
-    generatedAt: now,
-    applyMode: 'confirmation-required',
-    writePerformed: false,
-    target: { repository, resourceId, targetVersion, upgradeFrom: upgradeFrom || null, note: typeof note === 'string' ? note : null, destination: `${repository}/${resourceId}/versions/${targetVersion}` },
-    steps: [{ operation: 'create-release-directory', fileCount: files.length + (copyFrom?.files.length || 0), sha256sums: true, sumsSha256: sha256(sums) }],
-    verification: ['re-check the target version directory does not exist before apply', 'write every file atomically and re-hash against SHA256SUMS', 'remove the whole directory on failure'],
-    payload: { files, sums, copyFrom }
-  };
+  const editor=upgradeFrom?await readBodyEditor({workspaceRoot,platformId,type:'agent',resourceId,version:upgradeFrom}):null;
+  const chosen=runnerWorkflow || editor?.fields.runnerWorkflow || listBodyDependencies({workspaceRoot}).workflows[0]?.id;
+  const dependencies=editor?.fields.dependencies || {workflows:Object.fromEntries(listBodyDependencies({workspaceRoot}).workflows.filter(row=>row.id===chosen).map(row=>[row.id,row.version]))};
+  const body=definitionOverride || content || editor?.content || '按用户提供的任务和项目材料处理请求，遵守精确工作流锁与项目边界，缺少输入时明确说明。';
+  return buildAgentSkillBodyPlan({intake:editor?.intake || draftTextSource({workspaceRoot,platformId,type:'agent',files:{'expert.md':body},entryPath:'expert.md'}),platformId,resourceId,version:targetVersion,displayName,content:body,runnerWorkflow:chosen,dependencies,existingManifest:editor?.fields.manifest});
 }
 
 export function applyRelease(plan, context) {
@@ -198,6 +108,7 @@ function verifyReleaseDir(versionRoot) { return verifyFrozenDirectory(versionRoo
 
 
 export function verifyRelease({ plan }) {
+  if(plan.kind==='body-import')return verifyIntakePublication({plan});
   const root = resolve(plan.workspaceRoot);
   const versionRoot = join(root, plan.target.destination);
   if (!existsSync(versionRoot)) {

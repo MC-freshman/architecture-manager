@@ -10,6 +10,7 @@ import {assertPublishedVersion,buildResourcePointerPlan} from '../src/plans.mjs'
 import {applyPlan,verifyPlanTarget} from '../src/transactions.mjs';
 import {buildIntegrationPlan} from '../src/integration.mjs';
 import {buildReleasePlan} from '../src/releases.mjs';
+import {validateResourceContent} from '../src/domains/resources/contracts.mjs';
 import {resolveRecipeVersion,verifySoftwareRecipe} from '../src/software-publish.mjs';
 
 function fixture(t) {const root=mkdtempSync(join(tmpdir(),'am-resource-regression-'));t.after(()=>{assert.ok(relative(tmpdir(),root).startsWith('am-resource-regression-'));rmSync(root,{recursive:true,force:true});});return root;}
@@ -43,8 +44,9 @@ test('software next version is semantic and extra files fail recipe verification
 });
 test('wrong templates and upgrade definition identities fail before publication',t=>{
   const root=fixture(t);seedPointer(root,'tool','demo','1.0.0');seedRelease(root,'tool','demo','1.0.0');
-  assert.throws(()=>buildReleasePlan({workspaceRoot:root,repository:'tool',resourceId:'demo',targetVersion:'1.1.0'}),/RESOURCE_SCHEMA_INVALID/);
-  assert.throws(()=>buildReleasePlan({workspaceRoot:root,repository:'tool',resourceId:'demo',targetVersion:'1.1.0',upgradeFrom:'1.0.0'}),/WORKFLOW_IDENTITY_MISMATCH/);
+  assert.throws(()=>validateResourceContent({repository:'tool',resourceId:'demo',version:'1.1.0',read:()=>JSON.stringify({schema:'ai-tool-manifest/v2',id:'demo',version:'1.1.0'}),has:()=>true}),/RESOURCE_SCHEMA_INVALID/);
+  const release=join(root,'tool/demo/versions/1.0.0'),get=name=>readFileSync(join(release,name),'utf8');const manifest=JSON.parse(get('manifest.json'));manifest.version='1.1.0';
+  assert.throws(()=>validateResourceContent({repository:'tool',resourceId:'demo',version:'1.1.0',read:name=>name==='manifest.json'?JSON.stringify(manifest):get(name),has:()=>true}),/WORKFLOW_IDENTITY_MISMATCH/);
 });
 test('BOM JSON and precise dependency pins are handled without changing source bytes',t=>{
   const root=fixture(t),file=join(root,'bom.json');writeFileSync(file,'\uFEFF{"ok":true}');const before=sha256(readFileSync(file));assert.equal(readJson(file).ok,true);assert.equal(sha256(readFileSync(file)),before);

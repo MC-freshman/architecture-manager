@@ -28,6 +28,7 @@ function inventory(source,kind) {
   walk(source);assertUniqueSourcePaths(entries);return entries;
 }
 export function entryChunks(intake,row) {
+  if(intake.sourceKind==='draft') {const original=intake.draftFiles?.[row.path];if(typeof original!=='string' || sha256(original)!==row.sha256)throw Error('INTAKE_SOURCE_CHANGED');return [Buffer.from(original,'utf8')];}
   const source=externalSourcePath(intake.sourcePath);
   if(intake.sourceKind==='zip') {
     const entry=zipDirectory(source).find(entry=>entry.path===row.path && !entry.directory);
@@ -82,6 +83,10 @@ export async function scanExternalBody({workspaceRoot,platformId=null,sourcePath
   return {schema:'architecture-manager-intake/v1',workspaceRoot,platformId,type,sourcePath:source,sourceKind,sourceFingerprint:fingerprint,archiveSha256,excludes,files,excluded,choices:choices.map(({path,bytes,text,executable,installer,runnable})=>({path,bytes,text,executable,installer,runnable})),selectedEntry,selectionRequired:!selectedEntry,conversion:interpretation(type,files,selectedEntry),sourceRetained:true,bodyBytes,space:{steadyBytes:shared?bodyBytes:bodyBytes*2,peakBytes:shared?bodyBytes*2:bodyBytes*3,freeBytes,sufficient:freeBytes===null?null:freeBytes>=(shared?bodyBytes*2:bodyBytes*3)},writePerformed:false,instructionsExecuted:false,environmentOwnership:'platform-runtime'};
 }
 export async function assertIntakeUnchanged(intake,options={}) {
+  if(intake.sourceKind==='draft') {
+    const fresh=draftTextSource({workspaceRoot:intake.workspaceRoot,platformId:intake.platformId,type:intake.type,files:intake.draftFiles,entryPath:intake.selectedEntry});
+    if(fresh.sourceFingerprint!==intake.sourceFingerprint)throw Error('INTAKE_SOURCE_CHANGED');return fresh;
+  }
   const fresh=await scanExternalBody({workspaceRoot:intake.workspaceRoot,platformId:intake.platformId,sourcePath:intake.sourcePath,type:intake.type,excludes:intake.excludes,entryPath:intake.selectedEntry},options);
   if(fresh.sourceFingerprint!==intake.sourceFingerprint)throw Error('INTAKE_SOURCE_CHANGED');return fresh;
 }
@@ -89,4 +94,13 @@ export async function readExternalText(intake,name) {
   const row=intake.files.find(row=>row.path===name && row.included && row.text);if(!row)throw Error('INTAKE_ENTRY_INVALID');
   const bytes=[];for await(const chunk of entryChunks(intake,row)){assertScopedActive();bytes.push(chunk);}
   const content=Buffer.concat(bytes);if(sha256(content)!==row.sha256)throw Error('INTAKE_SOURCE_CHANGED');return decodeSourceText(content);
+}
+export function draftTextSource({workspaceRoot,platformId,type,files,entryPath}) {
+  if(!['agent','skill','tool'].includes(type) || !files || !Object.keys(files).length)throw Error('INTAKE_TYPE_INVALID');
+  const rows=Object.entries(files).map(([path,content])=>{
+    path=sourceRelative(path);if(typeof content!=='string' || content.includes('\0') || hasSensitiveLiteral(content) || !classifyEntry(path,Buffer.from(content.slice(0,4096)),type).sharedText)throw Error('IMPORT_NON_TEXT_SHARED_FILE');
+    return {path,bytes:Buffer.byteLength(content),sha256:sha256(content),text:true,sharedText:true,included:true};
+  });assertUniqueSourcePaths(rows);if(!rows.some(row=>row.path===entryPath))throw Error('INTAKE_ENTRY_INVALID');
+  const sourceFingerprint=sha256(stableJson({sourceKind:'draft',type,files:rows.sort((a,b)=>a.path.localeCompare(b.path))}));
+  return {schema:'architecture-manager-intake/v1',workspaceRoot,platformId,type,sourceKind:'draft',sourcePath:null,sourceFingerprint,files:rows,excluded:[],excludes:[],selectedEntry:entryPath,draftFiles:files,sourceRetained:true,writePerformed:false,instructionsExecuted:false};
 }

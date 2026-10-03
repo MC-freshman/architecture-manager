@@ -8,6 +8,7 @@ import { sha256 } from '../src/core/hash.mjs';
 import { buildRegistryPlan } from '../src/catalog.mjs';
 import { buildReleasePlan, listResourceReferences, readRegistryBaseline, verifyRelease } from '../src/releases.mjs';
 import { applyPlan } from '../src/transactions.mjs';
+import {execFileSync} from 'node:child_process';
 
 function makeWorkspace() {
   const root = mkdtempSync(join(tmpdir(), 'am-release-'));
@@ -36,9 +37,12 @@ function makeWorkspace() {
   mkdirSync(join(root, 'tool'), { recursive: true });
   writeFileSync(join(root, 'tool', 'registry.json'), `${JSON.stringify({ schema: 'ai-tool-registry/v2', version: 1, workflows: [{ id: 'game-pipeline', current: 'game-pipeline/current.json', enabled: true, kind: 'workflow', invocable: true }] }, null, 2)}\n`);
   writeFileSync(join(root, 'agent', 'registry.json'), `${JSON.stringify({ schema: 'ai-agent-registry/v2', version: 1, agents: [{ id: 'game-builder', current: 'game-builder/current.json', enabled: true }] }, null, 2)}\n`);
-  seedRelease(root,'tool','game-pipeline','1.0.0',{'logo.bin':Buffer.from([1,0,2,0])});
+  seedRelease(root,'tool','game-pipeline','1.0.0',{'logo.bin':Buffer.from([1,0,2,0]),'tests/a.txt':'test\n'});
   seedRelease(root,'agent','game-builder','2.0.0');
-  return { root, auditRoot };
+  seedPointer(root,'agent','game-builder','2.0.0');
+  mkdirSync(join(root,'local-client'),{recursive:true});writeFileSync(join(root,'local-client/bridge.json'),JSON.stringify({schema:'ai-platform-bridge/v1',platform:'local-client',shared:{readOnly:true}}));
+  const git=(...args)=>execFileSync('git',['-C',root,...args],{encoding:'utf8',windowsHide:true,stdio:['ignore','pipe','pipe']});git('init');git('config','user.name','Fixture');git('config','user.email','fixture@example.invalid');git('config','core.autocrlf','false');git('add','--','.');git('commit','-m','baseline');
+  return { root, auditRoot,platformId:'local-client' };
 }
 
 function hashTree(directory) {
@@ -54,43 +58,42 @@ function hashTree(directory) {
   return Object.fromEntries(files);
 }
 
-test('upgrade copies the previous version, bumps manifest, and verifies SHA256SUMS', () => {
+test('upgrade preserves the previous version, bumps both identities, and verifies SHA256SUMS', async () => {
   const fixture = makeWorkspace();
   const before = hashTree(join(fixture.root, 'tool', 'game-pipeline', 'versions', '1.0.0'));
-  const plan = buildReleasePlan({ workspaceRoot: fixture.root, repository: 'tool', resourceId: 'game-pipeline', targetVersion:'1.1.0',upgradeFrom:'1.0.0',definitionOverride:readFileSync(join(fixture.root,'tool/game-pipeline/versions/1.0.0/workflow.yaml'),'utf8').replaceAll('1.0.0','1.1.0') });
-  assert.equal(plan.kind, 'release-publish');
+  const plan = await buildReleasePlan({ workspaceRoot: fixture.root,platformId:fixture.platformId, repository: 'tool', resourceId: 'game-pipeline', targetVersion:'1.1.0',upgradeFrom:'1.0.0' });
+  assert.equal(plan.kind, 'body-import');
   assert.equal(plan.writePerformed, false);
-  const applied = applyPlan({ plan, auditRoot: fixture.auditRoot });
+  const applied = await applyPlan({ plan, auditRoot: fixture.auditRoot });
   assert.equal(applied.status, 'applied');
   const newRoot = join(fixture.root, 'tool', 'game-pipeline', 'versions', '1.1.0');
   assert.ok(existsSync(newRoot));
   const manifest = JSON.parse(readFileSync(join(newRoot, 'manifest.json'), 'utf8'));
   assert.equal(manifest.version, '1.1.0');
   const source = JSON.parse(readFileSync(join(newRoot, 'SOURCE.json'), 'utf8'));
-  assert.equal(source.upgradeFrom, '1.0.0');
-  const binary = readFileSync(join(newRoot, 'logo.bin'));
-  assert.deepEqual([...binary], [1, 0, 2, 0]);
-  assert.equal(verifyRelease({ plan }).ok, true);
-  const again = applyPlan({ plan, auditRoot: fixture.auditRoot });
+  assert.equal(plan.target.settings.sourceVersion, '1.0.0');assert(source.sourcePlanId===plan.planId);
+  assert.equal(existsSync(join(newRoot,'logo.bin')),false); // Program/binary bytes do not enter a new shared text release.
+  assert.equal((await verifyRelease({ plan })).ok, true);
+  const again = await applyPlan({ plan, auditRoot: fixture.auditRoot });
   assert.equal(again.status, 'already-applied');
   assert.deepEqual(hashTree(join(fixture.root, 'tool', 'game-pipeline', 'versions', '1.0.0')), before);
   rmSync(fixture.root, { recursive: true, force: true });
   rmSync(fixture.auditRoot, { recursive: true, force: true });
 });
 
-test('unsafe fresh template is rejected before writing; full creation is implemented in P12', () => {
+test('the fresh expert template is callable through an exactly locked main workflow', async () => {
   const fixture=makeWorkspace();
-  assert.throws(()=>buildReleasePlan({workspaceRoot:fixture.root,repository:'agent',resourceId:'game-builder',targetVersion:'2.1.0'}),/RESOURCE_SCHEMA_INVALID/);
-  assert.equal(existsSync(join(fixture.root,'agent/game-builder/versions/2.1.0')),false);
+  const plan=await buildReleasePlan({workspaceRoot:fixture.root,platformId:fixture.platformId,repository:'agent',resourceId:'new-expert',targetVersion:'1.0.0'});await applyPlan({plan,auditRoot:fixture.auditRoot});
+  const manifest=JSON.parse(readFileSync(join(fixture.root,plan.target.destination,'manifest.json')));assert.equal(manifest.schema,'ai-agent/v2');assert.equal(manifest.runnerWorkflow,'game-pipeline');assert.equal((await verifyRelease({plan})).ok,true);
   rmSync(fixture.root,{recursive:true,force:true});rmSync(fixture.auditRoot,{recursive:true,force:true});
 });
 
-test('rejects existing versions, bad semver and missing resources', () => {
+test('rejects existing versions, bad semver and missing upgrade sources while allowing new IDs', async () => {
   const fixture = makeWorkspace();
-  assert.throws(() => buildReleasePlan({ workspaceRoot: fixture.root, repository: 'tool', resourceId: 'game-pipeline', targetVersion: '1.0.0' }), /RELEASE_VERSION_EXISTS/);
-  assert.throws(() => buildReleasePlan({ workspaceRoot: fixture.root, repository: 'tool', resourceId: 'game-pipeline', targetVersion: '1.0' }), /RELEASE_SEMVER_INVALID/);
-  assert.throws(() => buildReleasePlan({ workspaceRoot: fixture.root, repository: 'tool', resourceId: 'no-such', targetVersion: '1.0.0' }), /RESOURCE_NOT_FOUND/);
-  assert.throws(() => buildReleasePlan({ workspaceRoot: fixture.root, repository: 'tool', resourceId: 'game-pipeline', targetVersion: '2.0.0', upgradeFrom: '9.9.9' }), /RELEASE_UPGRADE_SOURCE_MISSING/);
+  await assert.rejects(buildReleasePlan({ workspaceRoot: fixture.root,platformId:fixture.platformId, repository: 'tool', resourceId: 'game-pipeline', targetVersion: '1.0.0' }), /RELEASE_VERSION_EXISTS/);
+  await assert.rejects(buildReleasePlan({ workspaceRoot: fixture.root,platformId:fixture.platformId, repository: 'tool', resourceId: 'game-pipeline', targetVersion: '1.0' }), /RELEASE_SEMVER_INVALID/);
+  assert.equal((await buildReleasePlan({ workspaceRoot: fixture.root,platformId:fixture.platformId, repository: 'tool', resourceId: 'no-such', targetVersion: '1.0.0' })).target.resourceId,'no-such');
+  await assert.rejects(buildReleasePlan({ workspaceRoot: fixture.root,platformId:fixture.platformId, repository: 'tool', resourceId: 'game-pipeline', targetVersion: '2.0.0', upgradeFrom: '9.9.9' }), /RELEASE_UPGRADE_SOURCE_MISSING/);
   rmSync(fixture.root, { recursive: true, force: true });
   rmSync(fixture.auditRoot, { recursive: true, force: true });
 });

@@ -1,6 +1,8 @@
 {
   "schema": "architecture-manager-operations/v1",
   "operations": {
+    "readToolBodyEditor": {"channel":"intake:tool-editor","phase":"query","backend":"readToolBodyEditor","argumentsStyle":"input","taskMode":"owned"},
+    "previewToolBody": {"channel":"intake:tool-plan","phase":"plan","backend":"buildToolBodyPlan","argumentsStyle":"input","taskMode":"owned"},
     "checkSharedBody": {"channel":"intake:body-smoke","phase":"execute","backend":"checkSharedBody","argumentsStyle":"input","taskMode":"owned"},
     "readBodyEditor": {"channel":"intake:body-editor","phase":"query","backend":"readBodyEditor","argumentsStyle":"input","taskMode":"owned"},
     "listBodyDependencies": {"channel":"intake:dependencies","phase":"query","backend":"listBodyDependencies","argumentsStyle":"input","taskMode":"owned"},

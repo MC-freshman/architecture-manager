@@ -22,12 +22,13 @@ function callback(file,name,context) {
 
 test('actual release and document callbacks pass the selected workspace to IPC',async()=>{
   const calls=[],messages=[];
-  const context={workspace:'fixture-workspace',repository:'tool',resourceId:'demo',targetVersion:'1.1.0',upgradeFrom:'',definitionOverride:'',markKind:'workflow',markId:'demo',supersededBy:'replacement',deprecationNote:'',selectedDocument:{path:'versions/demo.md'},setReferences:()=>{},setPlanPreview:()=>{},setPlanPayload:()=>{},setDiff:()=>{},setMessage:message=>messages.push(message),friendlyError:error=>error.message};
-  context.api=new Proxy({}, {get:(_target,method)=>async input=>{calls.push({method,input});return {target:{destination:'destination',description:'description'},steps:[{fileCount:1}],references:[],scanned:1,payload:{afterText:'{}'},sha256:'baseline',empty:true};}});
+  const context={workspace:'fixture-workspace',platformId:'selected-client',content:'Read supplied material.',adopt:false,runnerWorkflow:'fixture-workflow',repository:'tool',resourceId:'demo',targetVersion:'1.1.0',upgradeFrom:'',definitionOverride:'',markKind:'workflow',markId:'demo',supersededBy:'replacement',deprecationNote:'',selectedDocument:{path:'versions/demo.md'},setError:()=>{},setReferences:()=>{},setPlanPreview:()=>{},setPlanPayload:()=>{},setDiff:()=>{},setMessage:message=>messages.push(message),friendlyError:error=>error.message};
+  context.api=new Proxy({}, {get:(_target,method)=>async input=>{calls.push({method,input});return {target:{destination:'destination',description:'description'},steps:[{fileCount:1}],references:[],scanned:1,payload:{afterText:'{}',changes:[]},sha256:'baseline',empty:true};}});
   for(const name of ['previewRelease','showReferences','previewMark']) await callback('../src/renderer/panels/releases.jsx',name,context)();
   await callback('../src/renderer/panels/documents.jsx','showDiff',context)();
   assert.deepEqual(calls.map(c=>c.method),['previewReleasePlan','listResourceReferences','readRegistryBaseline','previewRegistryPlan','documentDiff']);
   assert.ok(calls.every(c=>c.input.workspaceRoot===context.workspace));
+  assert.equal(calls[0].input.platformId,'selected-client');assert.equal(calls[0].input.content,context.content);
   assert.ok(messages.every(message=>!message.includes('ReferenceError') && !message.includes('被拒绝') && !message.includes('失败')));
 });
 

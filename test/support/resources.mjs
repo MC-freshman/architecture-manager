@@ -8,7 +8,7 @@ export function seedRelease(root,repository,id,version,extra={}) {
   const files=repository==='tool'?{
     'manifest.json':{schema:'ai-workflow/v2.1',id,version,mode:'pipeline',entry:'workflow.yaml',inputSchema:'schemas/input.json',outputSchema:'schemas/output.json',permissions,dependencies:{workflows:{},skills:{},packs:{}},integrity:{sha256Manifest:'SHA256SUMS'}},
     'workflow.yaml':{schema:'ai-workflow-definition/v2',id,version,mode:'pipeline',maxParallel:1,stages:[{id:'INTAKE',action:'prompt',worker:'expert',promptRef:'prompt.md#stage:INTAKE',dependsOn:[]}]},
-    'prompt.md':'# Task\n## stage:INTAKE\nDescribe the provided request.\n',
+    'prompt.md':'# Task\n<!-- stage:INTAKE -->\nDescribe the provided request.\n<!-- /stage:INTAKE -->\n',
     'schemas/input.json':{type:'object',properties:{request:{type:'string'}},additionalProperties:false},
     'schemas/output.json':{type:'object',properties:{answer:{type:'string'}},additionalProperties:false}
   }:repository==='agent'?{

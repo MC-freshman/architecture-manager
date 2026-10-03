@@ -146,6 +146,8 @@ function registerIpc() {
   handleOperation('intake:scan-source',()=>{throw Error('IPC_BACKEND_REQUIRED');});
   handleOperation('intake:body-editor',()=>{throw Error('IPC_BACKEND_REQUIRED');});
   handleOperation('intake:body-smoke',()=>{throw Error('IPC_BACKEND_REQUIRED');});
+  handleOperation('intake:tool-editor',()=>{throw Error('IPC_BACKEND_REQUIRED');});
+  handleOperation('intake:tool-plan',()=>{throw Error('IPC_BACKEND_REQUIRED');});
   handleOperation('intake:dependencies',()=>{throw Error('IPC_BACKEND_REQUIRED');});
   handleOperation('intake:agent-skill-plan',()=>{throw Error('IPC_BACKEND_REQUIRED');});
   handleOperation('intake:history',()=>{throw Error('IPC_BACKEND_REQUIRED');});

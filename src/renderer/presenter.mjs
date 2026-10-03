@@ -6,6 +6,8 @@ export function friendlyError(error) {
   const [key, ...details] = code.split(':');
   const hints = {
     AGENT_MAIN_WORKFLOW_REQUIRED:'请选择一条主工作流，并将它勾选进精确依赖。专家正文需要这条工作流才能被调用。',
+    TOOL_DEFINITION_KIND_REQUIRED:'这是治理组件而非用户工作流，请通过对应的组件升级方案维护；普通阶段编辑器不能改它。',
+    RESOURCE_PROMPT_ANCHOR_INVALID:'阶段正文缺失、重复或没有正确闭合。请使用阶段表单生成正文，或补齐来源定义引用的阶段。',
     BODY_TEXT_REQUIRED:'正文不能为空，请选择正文入口或填写完整内容。',
     IMPORT_GIT_BASELINE_REQUIRED:'登记文件有尚未提交的变化。请到 Git 页提交这些文件，建立可回滚基线后再执行接入。',
     IMPORT_EXTERNAL_CHANGE:'登记或本体被外部修改，管理台已保留现场。请重新读取后生成计划。',
