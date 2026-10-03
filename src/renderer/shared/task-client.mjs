@@ -1,11 +1,12 @@
 import declarations from '../../app/operations.json' with {type:'json'};
 
 export function taskClient(api,workspaceSession) {
-  return new Proxy(api,{get(target,method) {
+  // Electron contextBridge freezes its public methods. Copy them before wrapping:
+  // a Proxy cannot substitute a non-configurable, read-only target property.
+  return Object.fromEntries(Object.keys(api).map(method=>{
     const operation=declarations.operations[method];
-    if(!operation?.backend) return target[method];
-    return (...args)=>target[method](...args,{__managerTaskContext:true,jobId:globalThis.crypto.randomUUID(),workspaceSession});
-  }});
+    return [method,operation?.backend?(...args)=>api[method](...args,{__managerTaskContext:true,jobId:globalThis.crypto.randomUUID(),workspaceSession}):api[method]];
+  }));
 }
 export function progressMatches(progress,workspace,workspaceSession) {
   if(progress.workspaceSession) return progress.workspaceSession===workspaceSession;
