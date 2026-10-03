@@ -76,5 +76,7 @@ contextBridge.exposeInMainWorld('architectureManager', Object.freeze({
   applyPlan: (...args) => ipcRenderer.invoke("transaction:apply", ...args),
   verifyPlan: (...args) => ipcRenderer.invoke("transaction:verify", ...args),
   cancelTask: (...args) => ipcRenderer.invoke("task:cancel", ...args),
+  selectBodySource: (...args) => ipcRenderer.invoke("intake:select-source", ...args),
+  scanExternalBody: (...args) => ipcRenderer.invoke("intake:scan-source", ...args),
   onTransactionProgress: (callback) => { const listener = (_event, progress) => callback(progress); ipcRenderer.on('transaction:progress', listener); return () => ipcRenderer.removeListener('transaction:progress', listener); }
 }));
