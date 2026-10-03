@@ -1,3 +1,4 @@
+import {parseJson as parseJsonText} from './core/json.mjs';
 // Read-only audit-history domain (3.5.0 P1④).
 // Surfaces the transaction kernel's own events.jsonl and checkpoints to the
 // user. The audit root lives in appdata, outside any architecture workspace;
@@ -18,7 +19,7 @@ export function readAuditEvents(options = {}) {
   let corruptLines = 0;
   for (const line of lines) {
     try {
-      events.push(JSON.parse(line));
+      events.push(parseJsonText(line));
     } catch {
       corruptLines += 1;
     }

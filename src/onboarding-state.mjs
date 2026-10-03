@@ -1,3 +1,4 @@
+import {parseJson as parseJsonText} from './core/json.mjs';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -21,7 +22,7 @@ export function readOnboardingState({ workspaceRoot, platformId }) {
   readOnboardingConfig({ workspaceRoot, platformId });
   const path = pathOf(workspaceRoot, platformId);
   if (!existsSync(path)) return { schema: 'architecture-manager-onboarding/v1', platformId, status: 'not-started', steps: [], writePerformed: false };
-  const state = JSON.parse(readFileSync(path, 'utf8'));
+  const state = parseJsonText(readFileSync(path, 'utf8'));
   if (state.status === 'running' && !active.has(keyOf(workspaceRoot, platformId))) state.status = 'interrupted';
   return { ...state, writePerformed: false };
 }
@@ -97,7 +98,7 @@ function readFirstCertification(previous, root, id) {
   }
   const old = previous.steps?.find((step) => step.step === 'conform-and-first-matrix' && step.status === 'passed')?.result;
   if (!old || old.platformId !== id || !validPath(old.matrixPath) || !validPath(old.conformPath)) return null;
-  const matrix = JSON.parse(readFileSync(old.matrixPath, 'utf8')); const floor = JSON.parse(readFileSync(old.conformPath, 'utf8'));
+  const matrix = parseJsonText(readFileSync(old.matrixPath, 'utf8')); const floor = parseJsonText(readFileSync(old.conformPath, 'utf8'));
   if (!matrix.rows?.length || matrix.rows.some((row) => ['FAIL', 'NEEDS-INPUT'].includes(row.status)) || !floor.floorReached || matrix.summary?.PASS !== old.counts.pass) return null;
   return { versionsSha256: previous.versionsSha256, checkedAt: old.checkedAt, configSha256: old.configSha256, matrixPath: old.matrixPath, matrixSha256: sha256(readFileSync(old.matrixPath)), conformPath: old.conformPath, conformSha256: sha256(readFileSync(old.conformPath)), counts: old.counts, migratedFromStoredStep: !old.evidencePath || old.evidencePath.endsWith('latest.json') };
 }
@@ -110,7 +111,7 @@ export function environmentBinding(root, id) {
     const registryPath = targetPath(root, `${repo}/registry.json`);
     if (!existsSync(registryPath)) { hashes[repo] = null; continue; }
     hashes[repo] = sha256(readFileSync(registryPath));
-    const registry = JSON.parse(readFileSync(registryPath, 'utf8'));
+    const registry = parseJsonText(readFileSync(registryPath, 'utf8'));
     for (const entries of Object.values(registry)) if (Array.isArray(entries)) for (const entry of entries) if (entry.id) {
       const pointer = targetPath(root, `${repo}/${entry.current || `${entry.id}/current.json`}`);
       if (existsSync(pointer)) hashes[`${repo}:${entry.id}`] = sha256(readFileSync(pointer));

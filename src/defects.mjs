@@ -1,3 +1,4 @@
+import {parseJson as parseJsonText} from './core/json.mjs';
 // Read-only defect-book domain (3.5.0 P1②).
 // Reads versions/缺陷状态簿.json and runs the book's own stdlib checker
 // (versions/缺陷状态簿.check.py) as an external subprocess. Neither writes.
@@ -17,7 +18,7 @@ export function readDefectBook(workspaceRoot) {
   let book;
   try {
     raw = readFileSync(bookPath, 'utf8');
-    book = JSON.parse(raw);
+    book = parseJsonText(raw);
   } catch (error) {
     return { bookPath, present: true, corrupt: true, error: String(error) };
   }
@@ -60,7 +61,7 @@ export function buildDefectBookEditPlan({ workspaceRoot, operation, rowId = null
   if (typeof baselineSha256 !== 'string' || baselineSha256 !== actualSha) throw new Error('DEFECT_BOOK_BASELINE_MISMATCH');
   let book;
   try {
-    book = JSON.parse(before);
+    book = parseJsonText(before);
   } catch {
     throw new Error('DEFECT_BOOK_CORRUPT');
   }

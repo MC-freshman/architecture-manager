@@ -1,3 +1,4 @@
+import {parseJson as parseJsonText} from './core/json.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
@@ -15,7 +16,7 @@ import { runOwnedProcess } from './core/owned-process.mjs';
 const run = promisify(execFile);
 const helper = runtimeFile('provision.py');
 const json = (data) => `${JSON.stringify(data, null, 2)}\n`;
-const load = (path) => JSON.parse(readFileSync(path, 'utf8'));
+const load = (path) => parseJsonText(readFileSync(path, 'utf8'));
 
 export function buildOnboardingBackendPlan({ workspaceRoot, platformId, fields = {}, now = new Date().toISOString() }) {
   const snapshot = readOnboardingConfig({ workspaceRoot, platformId });
@@ -66,7 +67,7 @@ export function runtimeRequirements(root) {
 export async function detectRuntime({ pythonExecutable = '', wslExecutable = '' } = {}) {
   const result = { python: null, distributions: [], issues: [], writePerformed: false };
   if (pythonExecutable) {
-    try { result.python = JSON.parse((await run(pythonExecutable, ['-B', '-c', 'import sys,json;print(json.dumps({"executable":sys.executable,"version":list(sys.version_info[:3])}))'], { windowsHide: true, timeout: 15000 })).stdout); }
+    try { result.python = parseJsonText((await run(pythonExecutable, ['-B', '-c', 'import sys,json;print(json.dumps({"executable":sys.executable,"version":list(sys.version_info[:3])}))'], { windowsHide: true, timeout: 15000 })).stdout); }
     catch { result.issues.push('选中的 Python 无法运行，请重新选择解释器。'); }
   }
   const wsl = wslExecutable || (process.platform === 'win32' ? join(process.env.SystemRoot || 'C:\\Windows', 'System32/wsl.exe') : '');
@@ -123,7 +124,7 @@ export async function applyOnboardingRuntime(plan, { onProgress = () => {}, regi
     const processResult = await runOwnedProcess({ python: plan.target.python, args: ['-B', helper, spec], cwd: base, timeout: 1800000, registerCancel, env: { ...process.env, PIP_CACHE_DIR: join(base, 'pip-cache'), TEMP: base, TMP: base }, onOutput: (chunk) => {
       outputLines += chunk;
       const lines = outputLines.split('\n'); outputLines = lines.pop();
-      for (const line of lines) { try { const progress = JSON.parse(line); if (typeof progress.phase === 'string') onProgress({ platformId: plan.target.platformId, phase: progress.phase }); } catch { /* Program output is not an instruction. */ } }
+      for (const line of lines) { try { const progress = parseJsonText(line); if (typeof progress.phase === 'string') onProgress({ platformId: plan.target.platformId, phase: progress.phase }); } catch { /* Program output is not an instruction. */ } }
     } });
     if (processResult.cancelled) throw new Error('ONBOARDING_CANCELLED');
     if (processResult.exitCode !== 0) throw new Error('RUNTIME_PREPARATION_FAILED');

@@ -1,3 +1,4 @@
+import {parseJson as parseJsonText} from './core/json.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
@@ -12,7 +13,7 @@ import { runtimeFile } from './core/runtime-path.mjs';
 import { runOwnedProcess } from './core/owned-process.mjs';
 const run = promisify(execFile);
 const json = (data) => `${JSON.stringify(data, null, 2)}\n`;
-const load = (path) => JSON.parse(readFileSync(path, 'utf8'));
+const load = (path) => parseJsonText(readFileSync(path, 'utf8'));
 
 export async function probeOnboardingCapabilities({ workspaceRoot, platformId }, { onProgress = () => {}, registerCancel = () => {} } = {}) {
   const snapshot = readOnboardingConfig({ workspaceRoot, platformId });

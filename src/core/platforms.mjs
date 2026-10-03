@@ -1,3 +1,4 @@
+import {parseJson as parseJsonText} from './json.mjs';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { targetPath } from './paths.mjs';
@@ -23,7 +24,7 @@ export function discoverPlatformIds(workspaceRoot) {
     try {
       const bridge = targetPath(workspaceRoot, `${entry.name}/bridge.json`);
       if (!existsSync(bridge) || !statSync(bridge).isFile()) continue;
-      const value = JSON.parse(readFileSync(bridge, 'utf8'));
+      const value = parseJsonText(readFileSync(bridge, 'utf8'));
       if (value.platform === entry.name && ['ai-platform-bridge/v1', 'ai-platform-bridge/v1.1'].includes(value.schema) && value.shared?.readOnly === true) discovered.push(entry.name);
     } catch { /* An invalid or escaping bridge is not a registered platform. */ }
   }

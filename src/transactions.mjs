@@ -1,3 +1,5 @@
+import { validateRegistry } from './domains/resources/registry.mjs';
+import { parseJson } from './core/json.mjs';
 import { existsSync, readFileSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import { buildRegistryPlan } from './catalog.mjs';
 import { buildDefectBookEditPlan } from './defects.mjs';
@@ -60,7 +62,7 @@ function applyPlatformView(plan, context) {
   const target = localViewPath(plan.workspaceRoot);
   const before = existsSync(target) ? readFileSync(target, 'utf8') : JSON.stringify({ schema: 'architecture-manager-view/v1', workspaceRoot: resolve(plan.workspaceRoot), enabled: {} }, null, 2);
   let state;
-  try { state = JSON.parse(before); } catch { throw new Error('LOCAL_VIEW_CORRUPT'); }
+  try { state = parseJson(before); } catch { throw new Error('LOCAL_VIEW_CORRUPT'); }
   state.enabled = state.enabled && typeof state.enabled === 'object' ? state.enabled : {};
   const current = state.enabled[platformId] !== false;
   const id = makeId(plan, context.now);
@@ -96,7 +98,7 @@ function applyRegistry(plan, afterText, context) {
   if (sha256(afterText) !== expectedNew) throw new Error('PLAN_PAYLOAD_MISMATCH');
   const validated = buildRegistryPlan({ workspaceRoot: plan.workspaceRoot, kind: plan.target.catalogKind, action: plan.target.action, id: plan.target.id, entry: plan.target.entry, baselineSha256: expectedOld });
   if (validated.steps[0].newSha256 !== expectedNew) throw new Error('PLAN_PAYLOAD_MISMATCH');
-  JSON.parse(afterText);
+  parseJson(afterText);
   const saved = saveCheckpoint(context.auditRoot, id, before);
   if (context.failAfterCheckpoint) throw Object.assign(new Error('SIMULATED_INTERRUPT'), { checkpointPath: saved.path });
   try {
@@ -162,7 +164,7 @@ function applyDefectBook(plan, afterText, context) {
   if (sha256(afterText) !== expectedNew) throw new Error('PLAN_PAYLOAD_MISMATCH');
   const validated = buildDefectBookEditPlan({ workspaceRoot: plan.workspaceRoot, operation: plan.target.operation, rowId: plan.target.rowId, newStatus: plan.target.newStatus, row: plan.target.row ?? null, note: plan.target.note ?? null, baselineSha256: sha256(before) });
   if (validated.steps[0].newSha256 !== expectedNew) throw new Error('PLAN_PAYLOAD_MISMATCH');
-  JSON.parse(afterText);
+  parseJson(afterText);
   const saved = saveCheckpoint(context.auditRoot, id, before);
   if (context.failAfterCheckpoint) {
     const event = writeAudit({ ...context, transactionId: id, plan, action: 'defect-book-edit', status: 'interrupted-before-write', target: relativeTarget, oldSha256: expectedOld, newSha256: expectedNew, checkpointSha256: saved.sha256, checkpointPath: saved.path, error: 'SIMULATED_INTERRUPT' });
@@ -186,7 +188,7 @@ function applyPointer(plan, context) {
   const step = plan.steps?.[0];
   if (!step?.oldSha256) throw new Error('POINTER_BASELINE_REQUIRED');
   const before = readFileSync(target, 'utf8');
-  const parsed = JSON.parse(before);
+  const parsed = parseJson(before);
   const currentVersion = parsed?.version;
   const expectedOld = plan.target?.currentVersion;
   const expectedNew = plan.target?.targetVersion;
@@ -209,7 +211,7 @@ function applyPointer(plan, context) {
   }
   try {
     atomicWrite(target, after, id);
-    const actual = JSON.parse(readFileSync(target, 'utf8'));
+    const actual = parseJson(readFileSync(target, 'utf8'));
     if (actual.version !== expectedNew) throw new Error('VERIFY_FAILED');
     const event = writeAudit({ ...context, transactionId: id, plan, action: 'resource-pointer', status: 'applied', target: targetRelative, oldSha256: step.oldSha256, newSha256: sha256(after), checkpointSha256: saved.sha256, checkpointPath: saved.path, writePerformed: true });
     return output(event, saved.path);
@@ -243,7 +245,7 @@ function applyIntegration(plan, afterText, context) {
     throw Object.assign(new Error('EXTERNAL_CHANGE_DETECTED'), { audit: event });
   }
   if (typeof afterText !== 'string') throw new Error('INTEGRATION_PAYLOAD_REQUIRED');
-  try { JSON.parse(afterText); } catch { throw new Error('INTEGRATION_JSON_INVALID'); }
+  try { parseJson(afterText); } catch { throw new Error('INTEGRATION_JSON_INVALID'); }
   if (sha256(afterText) !== expectedNew) throw new Error('PLAN_PAYLOAD_MISMATCH');
   const validated = buildIntegrationPlan({ workspaceRoot: plan.workspaceRoot, kind: plan.target.kind, targetId: plan.target.targetId, mode: plan.target.mode, relativePath: targetRelative, beforeText: before, afterText, baselineSha256: currentSha });
   if (validated.steps[0].newSha256 !== expectedNew) throw new Error('PLAN_PAYLOAD_MISMATCH');
@@ -307,12 +309,13 @@ export function verifyPlanTarget({ plan }) {
   if (plan.kind === 'resource-pointer') {
     const targetRelative = `${plan.target.repository}/${plan.target.resourceId}/current.json`;
     const target = targetPath(plan.workspaceRoot, targetRelative);
-    const current = JSON.parse(readFileSync(target, 'utf8'));
-    return { schema: 'architecture-manager-verification/v1', ok: current.version === plan.target.targetVersion, target: targetRelative, actualVersion: current.version, expectedVersion: plan.target.targetVersion, writePerformed: false };
+    const current = parseJson(readFileSync(target, 'utf8'));
+    let valid=true;try {assertPublishedVersion(plan.workspaceRoot,plan.target.repository,plan.target.resourceId,plan.target.targetVersion);} catch {valid=false;}
+    return { schema: 'architecture-manager-verification/v1', ok: valid && current.version === plan.target.targetVersion, target: targetRelative, actualVersion: current.version, expectedVersion: plan.target.targetVersion, writePerformed: false };
   }
   if (plan.kind === 'platform-view') {
     const path = localViewPath(plan.workspaceRoot);
-    const state = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : { enabled: {} };
+    const state = existsSync(path) ? parseJson(readFileSync(path, 'utf8')) : { enabled: {} };
     const actual = state.enabled?.[plan.target.platformId] !== false;
     return { schema: 'architecture-manager-verification/v1', ok: actual === plan.target.desiredEnabled, target: `platform:${plan.target.platformId}`, actualEnabled: actual, expectedEnabled: plan.target.desiredEnabled, writePerformed: false };
   }
@@ -321,12 +324,15 @@ export function verifyPlanTarget({ plan }) {
     const actual = sha256(readFileSync(target, 'utf8'));
     const companionStep = plan.steps?.[1];
     const companionSha = companionStep ? sha256(readFileSync(targetPath(plan.workspaceRoot, companionStep.target), 'utf8')) : null;
-    return { schema: 'architecture-manager-verification/v1', ok: actual === plan.steps[0].newSha256 && (!companionStep || companionSha === companionStep.newSha256), target: plan.target.path, actualSha256: actual, expectedSha256: plan.steps[0].newSha256, companionSha256: companionSha, writePerformed: false };
+    let valid=true;try {validateRegistry(plan.workspaceRoot,plan.target.path.split('/')[0],readFileSync(target,'utf8'),{validateReleases:plan.target.action==='add'||plan.target.action==='enable',onlyIds:new Set([plan.target.id])});} catch {valid=false;}
+    return { schema: 'architecture-manager-verification/v1', ok: valid && actual === plan.steps[0].newSha256 && (!companionStep || companionSha === companionStep.newSha256), target: plan.target.path, actualSha256: actual, expectedSha256: plan.steps[0].newSha256, companionSha256: companionSha, writePerformed: false };
   }
   if (plan.kind === 'integration-config' || plan.kind === 'integration-registry') {
     const target = targetPath(plan.workspaceRoot, plan.target.path);
     const actual = sha256(readFileSync(target, 'utf8'));
-    return { schema: 'architecture-manager-verification/v1', ok: actual === plan.steps[0].newSha256, target: plan.target.path, actualSha256: actual, expectedSha256: plan.steps[0].newSha256, writePerformed: false };
+    let valid=true;
+    if(plan.kind==='integration-registry') try {validateRegistry(plan.workspaceRoot,plan.target.kind,readFileSync(target,'utf8'));} catch {valid=false;}
+    return { schema: 'architecture-manager-verification/v1', ok: valid && actual === plan.steps[0].newSha256, target: plan.target.path, actualSha256: actual, expectedSha256: plan.steps[0].newSha256, writePerformed: false };
   }
   throw new Error('TRANSACTION_KIND_UNSUPPORTED');
 }

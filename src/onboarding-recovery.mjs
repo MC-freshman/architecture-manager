@@ -1,3 +1,4 @@
+import {parseJson as parseJsonText} from './core/json.mjs';
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -5,7 +6,7 @@ import { targetPath } from './core/paths.mjs';
 import { inside } from './core/json.mjs';
 import { sha256 } from './core/hash.mjs';
 
-const read=path=>JSON.parse(readFileSync(path,'utf8'));
+const read=path=>parseJsonText(readFileSync(path,'utf8'));
 const hash=path=>sha256(readFileSync(path));
 const rowKey=row=>`${row.kind}:${row.id}@${row.version}`;
 const blocked=row=>['FAIL','NEEDS-INPUT'].includes(row.status);

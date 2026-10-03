@@ -1,3 +1,4 @@
+import {parseJson as parseJsonText} from './core/json.mjs';
 import { operationRegistrar } from './electron/operation-registry.mjs';
 import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron';
 import { existsSync, statSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -85,7 +86,7 @@ async function safeQuit() {
 }
 function preferences() {
   const path = join(app.getPath('userData'), 'workspace-preferences.json');
-  try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return {}; }
+  try { return parseJsonText(readFileSync(path, 'utf8')); } catch { return {}; }
 }
 function rememberWorkspace(root) {
   const directory = app.getPath('userData'); mkdirSync(directory, { recursive: true });

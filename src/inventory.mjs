@@ -1,3 +1,4 @@
+import {parseJson as parseJsonText} from './core/json.mjs';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
@@ -62,7 +63,7 @@ function readLocalView(root) {
 
 function safeReadJson(filePath) {
   try {
-    return { ok: true, value: JSON.parse(readFileSync(filePath, 'utf8')) };
+    return { ok: true, value: parseJsonText(readFileSync(filePath, 'utf8')) };
   } catch (error) {
     return { ok: false, error: String(error?.message ?? error) };
   }

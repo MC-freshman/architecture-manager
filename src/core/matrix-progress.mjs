@@ -1,3 +1,4 @@
+import {parseJson as parseJsonText} from './json.mjs';
 // Decode complete JSONL events across arbitrary pipe chunk boundaries.
 export function matrixProgressDecoder(platformId, onProgress) {
   let pending = '';
@@ -6,7 +7,7 @@ export function matrixProgressDecoder(platformId, onProgress) {
     const lines = pending.split(/\r?\n/); pending = lines.pop();
     if (pending.length > 65536) pending = '';
     for (const line of lines) {
-      let event; try { event = JSON.parse(line); } catch { continue; }
+      let event; try { event = parseJsonText(line); } catch { continue; }
       if (event.schema !== 'ai-invocation-matrix-event/v1' || !Number.isInteger(event.completed) || event.completed < 0 || !Number.isInteger(event.total) || event.total < 0) continue;
       const row = event.row;
       const verdict = { PASS: '通过', FAIL: '失败', EXPECTED: '登记例外', 'NEEDS-INPUT': '需要输入' }[row?.status];

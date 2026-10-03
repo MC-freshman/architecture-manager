@@ -1,3 +1,4 @@
+import {parseJson as parseJsonText} from './core/json.mjs';
 // Connector-client launch (3.5.0 P5). The manager never dispatches software
 // itself: it relays one JSON request to the platform's own connector exactly
 // the way the engine does, and surfaces whatever the connector answers
@@ -63,7 +64,7 @@ export function applySoftwareLaunch({ plan }, { actor = 'local-user', auditRoot 
   const directory = targetPath(plan.workspaceRoot, `${target.platformId}/runtime/tmp/manager-launch`);
   mkdirSync(directory, { recursive: true });
   const requestConfig = join(directory, `${id}.json`);
-  const gateway = JSON.parse(readFileSync(target.gatewayConfigPath, 'utf8'));
+  const gateway = parseJsonText(readFileSync(target.gatewayConfigPath, 'utf8'));
   // This copy grants only the exact confirmed session request; the base policy remains unchanged.
   writeFileSync(requestConfig, JSON.stringify({ ...gateway, allowGuiLaunch: true }), { flag: 'wx' });
   let stdout;
@@ -84,7 +85,7 @@ export function applySoftwareLaunch({ plan }, { actor = 'local-user', auditRoot 
   }
   let reply;
   try {
-    reply = JSON.parse(stdout);
+    reply = parseJsonText(stdout);
   } catch {
     writeAudit({ ...context, transactionId: id, plan, action: 'software-launch', status: 'failed', target: `${target.platformId}/${target.softwareId}`, error: 'connector output was not valid JSON', now });
     throw new Error('SOFTWARE_CONNECTOR_INVALID');
@@ -100,6 +101,6 @@ export function applySoftwareLaunch({ plan }, { actor = 'local-user', auditRoot 
 export function verifySoftwareLaunch(plan) {
   const path = targetPath(plan.workspaceRoot, `${plan.target.platformId}/runtime/tmp/manager-launch/${plan.planId}.response.json`);
   if (!existsSync(path)) return { ok: false, writePerformed: false };
-  const reply = JSON.parse(readFileSync(path, 'utf8'));
+  const reply = parseJsonText(readFileSync(path, 'utf8'));
   return { ok: reply.ok === true, connectorStatus: reply.state || reply.result?.status || reply.error?.code, writePerformed: false };
 }

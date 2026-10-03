@@ -1,3 +1,4 @@
+import {parseJson as parseJsonText} from '../../core/json.mjs';
 import {existsSync,lstatSync,mkdirSync,readFileSync,writeFileSync,rmSync,copyFileSync,readdirSync} from 'node:fs';
 import {dirname,join,relative} from 'node:path';
 import {execFileSync} from 'node:child_process';
@@ -87,7 +88,7 @@ export function verifyGitBackup(root,plan) {
     }
     const actual=files(directory).filter(name=>name!=='SHA256SUMS').sort();
     if(JSON.stringify([...listed].sort())!==JSON.stringify(actual)) throw Error('GIT_BACKUP_FILE_SET_MISMATCH');
-    const manifest=JSON.parse(readFileSync(join(directory,'MANIFEST.json'),'utf8'));
+    const manifest=parseJsonText(readFileSync(join(directory,'MANIFEST.json'),'utf8'));
     return {ok:manifest.restoreVerified===true && manifest.head===plan.target.headBefore,backupMode:manifest.backupMode,restoreVerified:manifest.restoreVerified,sumsPath:join(directory,'SHA256SUMS')};
   } catch(error) {return {ok:false,error:error.message};}
 }

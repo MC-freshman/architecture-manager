@@ -1,3 +1,4 @@
+import {parseJson as parseJsonText} from './core/json.mjs';
 import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { defaultAuditRoot } from './core/paths.mjs';
@@ -9,7 +10,7 @@ import { isRegisteredPlatform } from './core/platforms.mjs';
 function events(auditRoot) {
   const path = join(auditRoot, 'events.jsonl');
   if (!existsSync(path)) return [];
-  return readFileSync(path, 'utf8').split(/\r?\n/).filter(Boolean).flatMap((line) => { try { return [JSON.parse(line)]; } catch { return []; } });
+  return readFileSync(path, 'utf8').split(/\r?\n/).filter(Boolean).flatMap((line) => { try { return [parseJsonText(line)]; } catch { return []; } });
 }
 
 
@@ -42,7 +43,7 @@ export function revertSoftwareTransaction({ plan, auditRoot = defaultAuditRoot()
   if (!entry || !listSoftwareRecoveries({ workspaceRoot: root, auditRoot }).some((item) => item.checkpointPath === checkPath)) throw new Error('SOFTWARE_RECOVERY_NOT_AVAILABLE');
   const raw = readFileSync(checkPath, 'utf8');
   if (sha256(raw) !== entry.checkpointSha256) throw new Error('SOFTWARE_CHECKPOINT_CHANGED');
-  const checkpoint = JSON.parse(raw);
+  const checkpoint = parseJsonText(raw);
   const transactionId = `${entry.transactionId}-revert`;
   const auditPlan = { planId: plan.planId, workspaceRoot: root };
   if (entry.action === 'software-import') {
@@ -50,7 +51,7 @@ export function revertSoftwareTransaction({ plan, auditRoot = defaultAuditRoot()
     if (!isRegisteredPlatform(platformId, root) || !/^[a-z0-9][a-z0-9._-]*$/.test(softwareId) || resolve(target) !== join(root, platformId, 'runtime', 'software', softwareId) || !inside(join(root, 'inbox', 'backup', platformId, softwareId), backup)) throw new Error('SOFTWARE_RECOVERY_TARGET_INVALID');
     if (!existsSync(target) || !existsSync(backup) || lstatSync(target).isSymbolicLink() || lstatSync(backup).isSymbolicLink()) throw new Error('SOFTWARE_RECOVERY_TARGET_CHANGED');
     const registryPath = join(root, 'software', 'registry.json');
-    if (existsSync(registryPath) && JSON.parse(readFileSync(registryPath, 'utf8')).software?.some((item) => item.id === softwareId)) throw new Error('SOFTWARE_RECIPE_STILL_REGISTERED');
+    if (existsSync(registryPath) && parseJsonText(readFileSync(registryPath, 'utf8')).software?.some((item) => item.id === softwareId)) throw new Error('SOFTWARE_RECIPE_STILL_REGISTERED');
     for (const row of rows) {
       for (const base of [target, join(backup, 'payload')]) {
         const file = resolve(base, row.path);
@@ -72,8 +73,8 @@ export function revertSoftwareTransaction({ plan, auditRoot = defaultAuditRoot()
   if (!existsSync(releasePath) || sha256(readFileSync(join(releasePath, 'SHA256SUMS'), 'utf8')) !== releaseSumsSha256) throw new Error('SOFTWARE_RELEASE_CHANGED');
   const registryBefore = readFileSync(registryPath, 'utf8');
   const connectorBefore = readFileSync(connectorPath, 'utf8');
-  const registry = JSON.parse(registryBefore);
-  const connector = JSON.parse(connectorBefore);
+  const registry = parseJsonText(registryBefore);
+  const connector = parseJsonText(connectorBefore);
   const row = registry.software?.find((item) => item.id === softwareId);
   if (!row || row.enabled === false || connector.bodies?.[softwareId] !== bodyPath) throw new Error('SOFTWARE_RECOVERY_TARGET_CHANGED');
   const nextRegistry = `${JSON.stringify({ ...registry, version: Number.isInteger(registry.version) ? registry.version + 1 : registry.version, software: registry.software.map((item) => item.id === softwareId ? { ...item, enabled: false } : item) }, null, 2)}\n`;
@@ -93,13 +94,13 @@ export function revertSoftwareTransaction({ plan, auditRoot = defaultAuditRoot()
 
 export function verifySoftwareRevert({ plan }) {
   if (plan?.kind !== 'software-revert') throw new Error('INVALID_SOFTWARE_REVERT_PLAN');
-  const checkpoint = JSON.parse(readFileSync(plan.target.checkpointPath, 'utf8'));
+  const checkpoint = parseJsonText(readFileSync(plan.target.checkpointPath, 'utf8'));
   if (plan.target.originalAction === 'software-import') {
     const audit = events(dirname(dirname(plan.target.checkpointPath))).findLast((item) => item.checkpointPath === plan.target.checkpointPath && item.status === 'reverted');
     const trash = audit ? join(plan.workspaceRoot, 'inbox', 'trash', 'architecture-manager', audit.transactionId) : null;
     return { ok: !existsSync(checkpoint.target) && existsSync(checkpoint.backup) && Boolean(trash && existsSync(trash)), target: checkpoint.target, trash, writePerformed: false };
   }
-  const registry = JSON.parse(readFileSync(checkpoint.registryPath, 'utf8'));
-  const connector = JSON.parse(readFileSync(checkpoint.connectorPath, 'utf8'));
+  const registry = parseJsonText(readFileSync(checkpoint.registryPath, 'utf8'));
+  const connector = parseJsonText(readFileSync(checkpoint.connectorPath, 'utf8'));
   return { ok: registry.software?.find((item) => item.id === checkpoint.softwareId)?.enabled === false && !Object.hasOwn(connector.bodies || {}, checkpoint.softwareId) && existsSync(checkpoint.releasePath), target: checkpoint.releasePath, writePerformed: false };
 }

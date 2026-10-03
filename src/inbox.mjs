@@ -1,3 +1,4 @@
+import {parseJson as parseJsonText} from './core/json.mjs';
 // Read-only inbox inventory domain (3.5.0 P1③).
 // Shallow, read-only listing of the three inbox zones plus the BP-7 ledger.
 // BP-7 discipline: inventory is not discovery, not execution, never deletion —
@@ -39,7 +40,7 @@ export function inspectInbox(workspaceRoot) {
   let bp7Ledger = null;
   if (existsSync(ledgerPath)) {
     try {
-      const ledger = JSON.parse(readFileSync(ledgerPath, 'utf8'));
+      const ledger = parseJsonText(readFileSync(ledgerPath, 'utf8'));
       bp7Ledger = {
         path: ledgerPath,
         present: true,

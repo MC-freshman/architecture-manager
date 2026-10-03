@@ -3,8 +3,10 @@ import { readFileSync } from 'node:fs';
 import { relative, sep } from 'node:path';
 
 export function readJson(path) {
-  return JSON.parse(readFileSync(path, 'utf8'));
+  return parseJson(readFileSync(path, 'utf8'));
 }
+
+export function parseJson(text) { return JSON.parse(String(text).replace(/^\uFEFF/, '')); }
 
 export function inside(parent, target) {
   const rel = relative(parent, target);

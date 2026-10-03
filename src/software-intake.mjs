@@ -1,3 +1,4 @@
+import {parseJson as parseJsonText} from './core/json.mjs';
 import { createHash } from 'node:crypto';
 import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
@@ -140,7 +141,7 @@ export function verifySoftwareImport({ plan }) {
   try {
     assertRows(plan.target.path, plan.rows);
     assertRows(backup, plan.rows);
-    const manifest = JSON.parse(readFileSync(join(plan.target.backup, 'MANIFEST.json'), 'utf8'));
+    const manifest = parseJsonText(readFileSync(join(plan.target.backup, 'MANIFEST.json'), 'utf8'));
     return { ok: manifest.restoreDrill?.performed === true, target: plan.target.path, backup: plan.target.backup, writePerformed: false };
   } catch { return { ok: false, target: plan.target.path, backup: plan.target.backup, writePerformed: false }; }
 }

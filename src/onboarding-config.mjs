@@ -1,3 +1,4 @@
+import {parseJson as parseJsonText} from './core/json.mjs';
 // Configuration plans for an existing or new platform. All generated paths are
 // derived from the selected workspace; platform-specific state never becomes shared code.
 import { existsSync, mkdirSync, readFileSync, unlinkSync } from 'node:fs';
@@ -10,7 +11,7 @@ import { assertPublishedVersion } from './plans.mjs';
 import { atomicWrite, makeId, output, requirePlan, saveCheckpoint, writeAudit } from './transactions/kernel.mjs';
 
 const stringify = (value) => `${JSON.stringify(value, null, 2)}\n`;
-const read = (path, fallback = {}) => existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : fallback;
+const read = (path, fallback = {}) => existsSync(path) ? parseJsonText(readFileSync(path, 'utf8')) : fallback;
 const SECRET = /password|passwd|secret|token|api[_-]?key|private[_-]?key/i;
 
 export function assertConfigurationReferences(value) {
@@ -32,9 +33,7 @@ function context(workspaceRoot, platformId) {
 function release(root, repository, id, requested) {
   const pointerPath = targetPath(root, `${repository}/${id}/current.json`);
   const version = requested || read(pointerPath).version;
-  if (id.startsWith('_') && repository === 'software') {
-    if (!/^\d+\.\d+\.\d+$/.test(version || '') || !existsSync(targetPath(root, `${repository}/${id}/versions/${version}/SHA256SUMS`))) throw new Error('TARGET_VERSION_NOT_FROZEN');
-  } else assertPublishedVersion(root, repository, id, version);
+  assertPublishedVersion(root, repository, id, version);
   const path = targetPath(root, `${repository}/${id}/versions/${version}`);
   const manifest = read(join(path, 'manifest.json'));
   if (manifest.id !== id || manifest.version !== version) throw new Error('RELEASE_IDENTITY_MISMATCH');
@@ -118,7 +117,7 @@ export function buildOnboardingConfigPlan({ workspaceRoot, platformId, fields = 
   if (!existsSync(config.softwareGatewayConfig)) proposed.push({ path: `${platformId}/bridge/software-gateway-config.json`, content: stringify({ schema: 'ai-software-gateway-config/v1', platformId, platform: process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'macos' : process.platform, softwareRoot: join(root, 'software'), lockRoot: join(root, platformId, 'runtime/software/locks'), evidenceRoot: join(root, platformId, 'runtime/software/evidence'), bodies: {}, interpreters: python ? { '.py': python } : {} }) });
   if (!existsSync(join(root, platformId, 'bridge/platform.md'))) proposed.push({ path: `${platformId}/bridge/platform.md`, content: `# ${bridge.displayName}\n\n平台 ID：${platformId}。管理台创建配置；接入状态以本平台的环境、能力、矩阵与客户端回环证据为准。\n` });
   const files = proposed.map((file) => {
-    assertConfigurationReferences(file.path.endsWith('.json') ? JSON.parse(file.content) : {});
+    assertConfigurationReferences(file.path.endsWith('.json') ? parseJsonText(file.content) : {});
     const target = targetPath(root, file.path);
     return { ...file, beforeSha256: existsSync(target) ? sha256(readFileSync(target)) : null, newSha256: sha256(file.content) };
   });

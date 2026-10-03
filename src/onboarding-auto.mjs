@@ -1,3 +1,4 @@
+import {parseJson as parseJsonText} from './core/json.mjs';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -16,7 +17,7 @@ import { startOnboardingJob } from './core/onboarding-jobs.mjs';
 
 const active = new Set();
 const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
-const load = (path) => JSON.parse(readFileSync(path, 'utf8'));
+const load = (path) => parseJsonText(readFileSync(path, 'utf8'));
 function preparationInputs(value) {
   if (!value) return null;
   const fields = { ...value.fields };

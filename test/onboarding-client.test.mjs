@@ -1,3 +1,4 @@
+import {seedRuntimeReleases} from './support/resources.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { execFileSync } from 'node:child_process';
@@ -12,9 +13,7 @@ test('actual CLI and MCP connections pass; wrong platform, replay and direct run
   const python = execFileSync('python', ['-c', 'import sys;print(sys.executable)'], { encoding: 'utf8', windowsHide: true }).trim();
   const put = (path, value) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), value); };
   try {
-    for (const [repo, id, version, entry] of [['tool','wf-runner','0.12.0','cli.py'],['tool','runtime-contracts','1.5.0','contracts/runtime/validate_contracts.py'],['tool','repo-lint','0.6.3','scripts/repo_lint.py'],['software','_connector','1.0.7','connector.py']]) {
-      put(`${repo}/${id}/current.json`, JSON.stringify({id,version})); put(`${repo}/${id}/versions/${version}/manifest.json`, JSON.stringify({id,version})); put(`${repo}/${id}/versions/${version}/SHA256SUMS`, 'fixture'); put(`${repo}/${id}/versions/${version}/${entry}`, '# not an invocable runner fixture');
-    }
+    seedRuntimeReleases(root);
     for (const repo of ['tool','agent','software']) put(`${repo}/registry.json`, JSON.stringify({entries:[]}));
     for (const id of ['first-client','second-client']) {
       applyOnboardingConfig(buildOnboardingConfigPlan({workspaceRoot:root,platformId:id,confirmed:true,fields:{pythonExecutable:python}}), {auditRoot});

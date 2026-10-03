@@ -1,3 +1,4 @@
+import {parseJson as parseJsonText} from './core/json.mjs';
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
@@ -7,7 +8,7 @@ const SOFTWARE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 function readJson(filePath) {
   try {
-    return JSON.parse(readFileSync(filePath, 'utf8'));
+    return parseJsonText(readFileSync(filePath, 'utf8'));
   } catch {
     return null;
   }

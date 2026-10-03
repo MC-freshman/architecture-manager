@@ -1,3 +1,4 @@
+import {seedRelease,seedPointer} from './support/resources.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -33,7 +34,9 @@ function fixture() {
   mkdirSync(join(root, 'software', 'demo', 'versions', '1.1.0'), { recursive: true });
   writeFileSync(join(root, 'software', 'demo', 'versions', '1.1.0', 'SHA256SUMS'), 'demo\n');
   mkdirSync(join(root, 'tool', 'demo', 'versions', '1.1.0'), { recursive: true });
-  writeFileSync(join(root, 'tool', 'demo', 'versions', '1.1.0', 'SHA256SUMS'), 'demo\n');
+  seedRelease(root,'tool','demo','1.1.0');
+  seedRelease(root,'software','demo','1.1.0');
+  for(const repository of ['tool','agent','software']) seedPointer(root,repository,'demo','1.0.0');
   writeFileSync(join(root, 'codex', 'bridge', 'bridge.json'), JSON.stringify({ schema: 'ai-platform-bridge/v1', platform: 'codex', shared: { agentRegistry: join(root, 'agent', 'registry.json'), toolRegistry: join(root, 'tool', 'registry.json'), architecturePrompt: join(root, 'AI_ARCHITECTURE_SYSTEM_PROMPT.md'), readOnly: true }, runtimeRoot: join(root, 'codex', 'runtime'), modes: ['workflow'] }, null, 2));
   writeFileSync(join(root, 'versions', 'architecture.md'), '# test');
   return root;
@@ -106,9 +109,9 @@ test('reads full agent/skill entries and applies a guarded registry plan', () =>
   mkdirSync(join(root, 'tool', '_registry'), { recursive: true });
   writeFileSync(join(root, 'agent', 'demo', 'versions', '1.0.0', 'manifest.json'), JSON.stringify({ id: 'demo', version: '1.0.0' }));
   writeFileSync(join(root, 'agent', 'demo', 'versions', '1.0.0', 'prompt.md'), '# Demo agent\n');
-  writeFileSync(join(root, 'agent', 'registry.json'), JSON.stringify({ schema: 'test', agents: [{ id: 'demo', current: 'agent/demo/current.json', version: '1.0.0', enabled: true }] }, null, 2));
-  writeFileSync(join(root, 'tool', '_registry', 'skills-demo.json'), JSON.stringify({ skills: [{ id: 'demo-skill', version: '1.0.0' }] }, null, 2));
-  writeFileSync(join(root, 'tool', 'registry.json'), JSON.stringify({ schema: 'test', skills: [{ id: 'skills-demo', path: '_registry/skills-demo.json', kind: 'skill-catalog', enabled: true }] }, null, 2));
+  writeFileSync(join(root, 'agent', 'registry.json'), JSON.stringify({ schema:'ai-agent-registry/v2',version:1,agents: [{ id: 'demo', current:'demo/current.json', version: '1.0.0', enabled: true }] }, null, 2));
+  writeFileSync(join(root, 'tool', '_registry', 'skills-demo.json'), JSON.stringify({schema:'ai-skill-catalog/v1', skills: [{ id: 'demo-skill', version: '1.0.0' }] }, null, 2));
+  writeFileSync(join(root, 'tool', 'registry.json'), JSON.stringify({ schema:'ai-tool-registry/v2',version:1,skills: [{ id: 'skills-demo', path: '_registry/skills-demo.json', kind: 'skill-catalog', enabled: true }] }, null, 2));
   try {
     const detail = readCatalogEntry({ workspaceRoot: root, kind: 'agent', id: 'demo' });
     assert.match(detail.prompt, /Demo agent/);
@@ -135,7 +138,8 @@ test('registry guard ignores obsolete releases but blocks the active release', (
   writeFileSync(join(root, 'tool', 'registry.json'), JSON.stringify({ workflows: [{ id: 'demo', enabled: true }] }));
   writeFileSync(join(oldRelease, 'workflow.yaml'), 'agent: game-builder\n');
   writeFileSync(join(activeRelease, 'workflow.yaml'), 'agent: other-agent\n');
-  writeFileSync(agentRegistry, JSON.stringify({ agents: [{ id: 'game-builder', enabled: true }] }));
+  seedPointer(root,'agent','game-builder','1.0.0');
+  writeFileSync(agentRegistry,JSON.stringify({schema:'ai-agent-registry/v2',version:1,agents:[{id:'game-builder',current:'game-builder/current.json',enabled:true}]}));
   try {
     const baselineSha256 = createHash('sha256').update(readFileSync(agentRegistry, 'utf8')).digest('hex');
     assert.doesNotThrow(() => buildRegistryPlan({ workspaceRoot: root, kind: 'agent', action: 'disable', id: 'game-builder', baselineSha256 }));
@@ -370,6 +374,7 @@ test('creates guarded Git plans without applying them', () => {
   assert.equal(commit.kind, 'git-commit');
   assert.equal(commit.writePerformed, false);
   assert.deepEqual(commit.target.paths, ['README.md']);
+  run(['remote','add','origin',join(root,'remote.git')]);
   const push = buildGitPlan({ workspaceRoot: root, action: 'push', remote: 'origin' });
   assert.equal(push.steps[0].force, false);
   const rollback = buildGitPlan({ workspaceRoot: root, action: 'rollback', commit: '0123456789abcdef0123456789abcdef01234567' });

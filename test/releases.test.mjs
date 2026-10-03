@@ -1,3 +1,4 @@
+import {seedRelease,seedPointer} from './support/resources.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -35,6 +36,8 @@ function makeWorkspace() {
   mkdirSync(join(root, 'tool'), { recursive: true });
   writeFileSync(join(root, 'tool', 'registry.json'), `${JSON.stringify({ schema: 'ai-tool-registry/v2', version: 1, workflows: [{ id: 'game-pipeline', current: 'game-pipeline/current.json', enabled: true, kind: 'workflow', invocable: true }] }, null, 2)}\n`);
   writeFileSync(join(root, 'agent', 'registry.json'), `${JSON.stringify({ schema: 'ai-agent-registry/v2', version: 1, agents: [{ id: 'game-builder', current: 'game-builder/current.json', enabled: true }] }, null, 2)}\n`);
+  seedRelease(root,'tool','game-pipeline','1.0.0',{'logo.bin':Buffer.from([1,0,2,0])});
+  seedRelease(root,'agent','game-builder','2.0.0');
   return { root, auditRoot };
 }
 
@@ -54,7 +57,7 @@ function hashTree(directory) {
 test('upgrade copies the previous version, bumps manifest, and verifies SHA256SUMS', () => {
   const fixture = makeWorkspace();
   const before = hashTree(join(fixture.root, 'tool', 'game-pipeline', 'versions', '1.0.0'));
-  const plan = buildReleasePlan({ workspaceRoot: fixture.root, repository: 'tool', resourceId: 'game-pipeline', targetVersion: '1.1.0', upgradeFrom: '1.0.0' });
+  const plan = buildReleasePlan({ workspaceRoot: fixture.root, repository: 'tool', resourceId: 'game-pipeline', targetVersion:'1.1.0',upgradeFrom:'1.0.0',definitionOverride:readFileSync(join(fixture.root,'tool/game-pipeline/versions/1.0.0/workflow.yaml'),'utf8').replaceAll('1.0.0','1.1.0') });
   assert.equal(plan.kind, 'release-publish');
   assert.equal(plan.writePerformed, false);
   const applied = applyPlan({ plan, auditRoot: fixture.auditRoot });
@@ -75,17 +78,11 @@ test('upgrade copies the previous version, bumps manifest, and verifies SHA256SU
   rmSync(fixture.auditRoot, { recursive: true, force: true });
 });
 
-test('fresh template publish creates manifest, SOURCE.json, definition and tests placeholder', () => {
-  const fixture = makeWorkspace();
-  const plan = buildReleasePlan({ workspaceRoot: fixture.root, repository: 'agent', resourceId: 'game-builder', targetVersion: '2.1.0' });
-  applyPlan({ plan, auditRoot: fixture.auditRoot });
-  const newRoot = join(fixture.root, 'agent', 'game-builder', 'versions', '2.1.0');
-  for (const name of ['manifest.json', 'SOURCE.json', 'prompt.md', join('tests', '.gitkeep'), 'SHA256SUMS']) {
-    assert.ok(existsSync(join(newRoot, name)), name);
-  }
-  assert.equal(JSON.parse(readFileSync(join(newRoot, 'manifest.json'), 'utf8')).version, '2.1.0');
-  rmSync(fixture.root, { recursive: true, force: true });
-  rmSync(fixture.auditRoot, { recursive: true, force: true });
+test('unsafe fresh template is rejected before writing; full creation is implemented in P12', () => {
+  const fixture=makeWorkspace();
+  assert.throws(()=>buildReleasePlan({workspaceRoot:fixture.root,repository:'agent',resourceId:'game-builder',targetVersion:'2.1.0'}),/RESOURCE_SCHEMA_INVALID/);
+  assert.equal(existsSync(join(fixture.root,'agent/game-builder/versions/2.1.0')),false);
+  rmSync(fixture.root,{recursive:true,force:true});rmSync(fixture.auditRoot,{recursive:true,force:true});
 });
 
 test('rejects existing versions, bad semver and missing resources', () => {

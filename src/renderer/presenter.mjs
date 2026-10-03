@@ -5,6 +5,14 @@ export function friendlyError(error) {
   const code = String(error?.message ?? error);
   const [key, ...details] = code.split(':');
   const hints = {
+    RESOURCE_SCHEMA_INVALID: '资源结构不符合架构契约，请查看字段问题并补齐后重新预览。',
+    RESOURCE_IDENTITY_MISMATCH: '资源 manifest 的 ID 或版本与目标目录不一致，请更正候选文件。',
+    WORKFLOW_IDENTITY_MISMATCH: '工作流定义与 manifest 的 ID 或版本不一致，请更正候选定义；已发布的旧版本不会被覆盖。',
+    RELEASE_HASH_MISMATCH: '发布内容与封条哈希不一致，管理台已阻止采用这个版本。',
+    RELEASE_FILE_SET_MISMATCH: '发布目录包含未封存或缺失的文件，不能采用或验证通过。',
+    RELEASE_CHECKSUM_FORMAT: 'SHA256SUMS 不是可读的正式哈希清单，请重新发布合法新版本。',
+    REGISTRY_SCHEMA_INVALID: '注册表结构不正确，不能用任意 JSON 替换架构登记。',
+    RESOURCE_DEPENDENCY_NOT_PINNED: '依赖必须填写精确版本，不能填写 current、latest 或范围。',
     INVALID_REMOTE: '请选择这个仓库已经配置的远端名称，不能填写推送选项或不存在的远端。',
     GIT_ROLLBACK_DIRTY: '当前还有未提交或暂存的文件。请先提交或备份并处理这些改动，再生成回滚计划。',
     GIT_BACKUP_PLATFORM_REQUIRED: '历史备份需要选择一个已存在的平台作为备份归属。',

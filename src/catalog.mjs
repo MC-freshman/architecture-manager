@@ -2,20 +2,18 @@ import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import { sha256 } from './core/hash.mjs';
+import {readJson as readJsonFile,parseJson} from './core/json.mjs';
+import {targetPath} from './core/paths.mjs';
+import {validateRegistry} from './domains/resources/registry.mjs';
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 function readJson(path) {
-  try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return null; }
+  try { return readJsonFile(path); } catch { return null; }
 }
 
 function safeWorkspacePath(root, relativePath) {
-  const base = realpathSync(root);
-  const lexical = resolve(base, relativePath);
-  const target = existsSync(lexical) ? realpathSync(lexical) : lexical;
-  const rel = relative(base, target);
-  if (rel.startsWith(`..${sep}`) || rel === '..' || isAbsolute(rel)) throw new Error('CATALOG_PATH_OUTSIDE_WORKSPACE');
-  return target;
+  return targetPath(root,relative(resolve(root),resolve(root,relativePath)));
 }
 
 function toRelative(root, target) {
@@ -116,7 +114,7 @@ function requireUnreferenced(root, kind, id, entry) {
   }
   function mentionsReference(path) {
     const text = readFileSync(path, 'utf8');
-    try { return hasStructuredReference(JSON.parse(text)); }
+    try { return hasStructuredReference(parseJson(text)); }
     catch {
       return text.split(/\r?\n/).some((line) => {
         const match = /^\s*(?:-\s*)?([A-Za-z][A-Za-z0-9_-]*)\s*:\s*(.*)$/.exec(line);
@@ -152,7 +150,7 @@ export function buildRegistryPlan({ workspaceRoot, kind, action, id, baselineSha
   const before = readFileSync(registryPath, 'utf8');
   const actualSha = sha256(before);
   if (typeof baselineSha256 !== 'string' || baselineSha256 !== actualSha) throw new Error('CATALOG_BASELINE_MISMATCH');
-  const registry = JSON.parse(before);
+  const registry = parseJson(before);
   const items = Array.isArray(registry[info.key]) ? [...registry[info.key]] : [];
   const index = items.findIndex((item) => item.id === id);
   let nextItems;
@@ -191,6 +189,7 @@ export function buildRegistryPlan({ workspaceRoot, kind, action, id, baselineSha
   }
   const afterObject = { ...registry, ...(Number.isInteger(registry.version) ? { version: registry.version + 1 } : {}), [info.key]: nextItems };
   const after = `${JSON.stringify(afterObject, null, 2)}\n`;
+  validateRegistry(root,info.base,after,{validateReleases:action==='add'||action==='enable',onlyIds:new Set([id])});
   return {
     schema: 'architecture-manager-plan/v1',
     planId: `registry-${kind}-${action}-${now.replace(/[^0-9]/g, '').slice(0, 17)}`,

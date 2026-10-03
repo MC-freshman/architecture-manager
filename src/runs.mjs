@@ -1,3 +1,4 @@
+import {parseJson as parseJsonText} from './core/json.mjs';
 // Read-only run-ledger domain (3.5.0 P1①).
 // Parses platform run directories and their run-lock.json without writing anything.
 // Lock files reach tens of KB because environment manifests are inlined, so only a
@@ -18,7 +19,7 @@ function readJsonFile(filePath) {
     return { status: 'missing' };
   }
   try {
-    return { status: 'ok', value: JSON.parse(raw) };
+    return { status: 'ok', value: parseJsonText(raw) };
   } catch {
     return { status: 'corrupt' };
   }

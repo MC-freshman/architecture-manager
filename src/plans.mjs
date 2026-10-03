@@ -1,3 +1,4 @@
+import { validateFrozenResource } from './domains/resources/versions.mjs';
 import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -5,12 +6,8 @@ const REPOSITORIES = new Set(['tool', 'agent', 'software']);
 const RESOURCE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
-export function assertPublishedVersion(workspaceRoot, repository, resourceId, version) {
-  if (!REPOSITORIES.has(repository) || !RESOURCE_ID.test(resourceId) || !SEMVER.test(version)) throw new Error('INVALID_RESOURCE_VERSION');
-  const release = join(workspaceRoot, repository, resourceId, 'versions', version);
-  const sums = join(release, 'SHA256SUMS');
-  if (!existsSync(release) || !statSync(release).isDirectory() || !existsSync(sums) || !statSync(sums).isFile()) throw new Error('TARGET_VERSION_NOT_FROZEN');
-}
+export function assertPublishedVersion(workspaceRoot,repository,resourceId,version) { return validateFrozenResource(workspaceRoot,repository,resourceId,version); }
+
 
 export function validatePointerTransition({ workspaceRoot, repository, resourceId, currentVersion, targetVersion, availableVersions = [] }) {
   if (!REPOSITORIES.has(repository)) throw new Error('INVALID_SHARED_REPOSITORY');

@@ -15,11 +15,14 @@
     "start": "npm run build:ui && electron .",
     "package:win": "npm run build:ui && electron-builder --win nsis portable --publish never",
     "generate:preload": "node scripts/generate-preload.mjs",
-    "lint": "eslint src scripts"
+    "lint": "eslint src scripts",
+    "conform": "node scripts/conform.mjs"
   },
   "dependencies": {
+    "ajv": "8.20.0",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "yaml": "2.9.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.1.1",

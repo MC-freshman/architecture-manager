@@ -1,3 +1,7 @@
+import {parseJson as parseJsonText} from './core/json.mjs';
+import { validateResourceContent } from './domains/resources/contracts.mjs';
+import { validateFrozenResource } from './domains/resources/versions.mjs';
+import { verifyFrozenDirectory } from './domains/resources/integrity.mjs';
 // Release wizard (3.5.0 P4): publish/upgrade scaffolds for the tool and agent
 // shared repositories. Publishing creates a NEW semver directory and never
 // touches published bytes; adoption stays a separate resource-pointer plan
@@ -7,7 +11,7 @@ import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { sha256 } from './core/hash.mjs';
-import { targetPath } from './core/paths.mjs';
+import { targetPath,safeRelative } from './core/paths.mjs';
 import { atomicWrite, makeId, output, requirePlan, writeAudit } from './transactions/kernel.mjs';
 
 const SEMVER = /^\d+\.\d+\.\d+$/;
@@ -86,10 +90,10 @@ export function buildReleasePlan({ workspaceRoot, repository, resourceId, target
     for (const relativePath of listFilesRecursive(sourceRoot)) {
       const buffer = readFileSync(join(sourceRoot, relativePath));
       if (relativePath === 'manifest.json') {
-        const manifest = JSON.parse(buffer.toString('utf8'));
+        const manifest = parseJsonText(buffer.toString('utf8'));
         files.push({ path: relativePath, encoding: 'utf8', content: `${JSON.stringify({ ...manifest, version: targetVersion }, null, 2)}\n` });
       } else if (relativePath === 'SOURCE.json') {
-        const source = JSON.parse(buffer.toString('utf8'));
+        const source = parseJsonText(buffer.toString('utf8'));
         files.push({ path: relativePath, encoding: 'utf8', content: `${JSON.stringify({ ...source, version: targetVersion, upgradeFrom }, null, 2)}\n` });
       } else if (isBinary(buffer) || BINARY_SUFFIXES.some((suffix) => relativePath.endsWith(suffix))) {
         binaries.push(relativePath);
@@ -111,8 +115,10 @@ export function buildReleasePlan({ workspaceRoot, repository, resourceId, target
     files[index] = { path: definition.path, encoding: 'utf8', content: definitionOverride };
   }
   if (!files.some((file) => file.path.startsWith('tests/'))) files.push({ path: 'tests/.gitkeep', encoding: 'utf8', content: '' });
-  const manifest = JSON.parse(files.find((file) => file.path === 'manifest.json').content);
+  const manifest = parseJsonText(files.find((file) => file.path === 'manifest.json').content);
   if (manifest.version !== targetVersion) throw new Error('RELEASE_MANIFEST_VERSION_MISMATCH');
+  const candidate = new Map(files.map(file=>[file.path,file.content]));
+  validateResourceContent({repository,resourceId,version:targetVersion,read:name=>candidate.get(name),has:name=>candidate.has(name)});
   const sumsEntries = files.map((file) => `${sha256(file.content)}  ${file.path}`);
   for (const binary of copyFrom?.files || []) sumsEntries.push(`${binary.sha256}  ${binary.path}`);
   const sums = sumsEntries.sort().join('\n') + '\n';
@@ -135,21 +141,29 @@ export function applyRelease(plan, context) {
   requirePlan(plan);
   const root = resolve(plan.workspaceRoot);
   const { repository, resourceId, targetVersion, destination } = plan.target;
+  if(destination!==`${repository}/${resourceId}/versions/${targetVersion}`) throw new Error('INVALID_TRANSACTION_TARGET');
+  const candidate=new Map(plan.payload.files.map(file=>[file.path,file.content]));
+  validateResourceContent({repository,resourceId,version:targetVersion,read:name=>candidate.get(name),has:name=>candidate.has(name)});
   const versionRoot = targetPath(root, destination);
   const sumsPath = join(versionRoot, 'SHA256SUMS');
   const id = makeId(plan, context.now);
   if (existsSync(sumsPath)) {
     const actualSums = readFileSync(sumsPath, 'utf8');
     if (actualSums === plan.payload.sums) {
+      validateFrozenResource(root,repository,resourceId,targetVersion);
       return output(writeAudit({ ...context, transactionId: id, plan, action: 'release-publish', status: 'already-applied', target: destination, newSha256: plan.steps[0].sumsSha256 }));
     }
     throw new Error('RELEASE_VERSION_EXISTS');
   }
   if (existsSync(versionRoot)) throw new Error('RELEASE_VERSION_EXISTS');
+  for(const file of [...plan.payload.files,...(plan.payload.copyFrom?.files || [])]) {
+    if(safeRelative(file.path)!==file.path.replaceAll('\\','/')) throw new Error('INVALID_TRANSACTION_TARGET');
+    targetPath(root,`${destination}/${file.path}`);
+  }
   let created = false;
   try {
     for (const file of plan.payload.files) {
-      const target = join(versionRoot, file.path);
+      const target = targetPath(root,`${destination}/${file.path}`);
       mkdirSync(join(target, '..'), { recursive: true });
       atomicWrite(target, file.content, id);
       created = true;
@@ -158,7 +172,7 @@ export function applyRelease(plan, context) {
       const sourceRoot = join(root, repository, resourceId, 'versions', plan.payload.copyFrom.version);
       if (!existsSync(sourceRoot)) throw new Error('RELEASE_UPGRADE_SOURCE_MISSING');
       for (const binary of plan.payload.copyFrom.files) {
-        const target = join(versionRoot, binary.path);
+        const target = targetPath(root,`${destination}/${binary.path}`);
         mkdirSync(join(target, '..'), { recursive: true });
         copyFileSync(join(sourceRoot, binary.path), target);
         created = true;
@@ -167,7 +181,7 @@ export function applyRelease(plan, context) {
     mkdirSync(versionRoot, { recursive: true });
     atomicWrite(sumsPath, plan.payload.sums, id);
     created = true;
-    verifyReleaseDir(versionRoot);
+    validateFrozenResource(root,repository,resourceId,targetVersion);
     const event = writeAudit({ ...context, transactionId: id, plan, action: 'release-publish', status: 'applied', target: destination, newSha256: plan.steps[0].sumsSha256, writePerformed: true });
     return output(event);
   } catch (error) {
@@ -176,18 +190,8 @@ export function applyRelease(plan, context) {
   }
 }
 
-function verifyReleaseDir(versionRoot) {
-  const sums = readFileSync(join(versionRoot, 'SHA256SUMS'), 'utf8');
-  const expected = new Map(sums.trim().split('\n').map((line) => {
-    const [hash, ...rest] = line.split('  ');
-    return [rest.join('  '), hash];
-  }));
-  const actual = listFilesRecursive(versionRoot);
-  if (actual.length !== expected.size) throw new Error('VERIFY_FAILED');
-  for (const relativePath of actual) {
-    if (expected.get(relativePath) !== fileHash(join(versionRoot, relativePath))) throw new Error('VERIFY_FAILED');
-  }
-}
+function verifyReleaseDir(versionRoot) { return verifyFrozenDirectory(versionRoot); }
+
 
 export function verifyRelease({ plan }) {
   const root = resolve(plan.workspaceRoot);
@@ -197,6 +201,7 @@ export function verifyRelease({ plan }) {
   }
   try {
     verifyReleaseDir(versionRoot);
+    validateFrozenResource(root,plan.target.repository,plan.target.resourceId,plan.target.targetVersion);
     return { schema: 'architecture-manager-verification/v1', ok: true, target: plan.target.destination, writePerformed: false };
   } catch (error) {
     return { schema: 'architecture-manager-verification/v1', ok: false, target: plan.target.destination, error: String(error?.message ?? error), writePerformed: false };
@@ -228,7 +233,7 @@ export function listResourceReferences(workspaceRoot, repository, resourceId) {
       if (!existsSync(currentPath)) continue;
       let version = null;
       try {
-        version = JSON.parse(readFileSync(currentPath, 'utf8')).version;
+        version = parseJsonText(readFileSync(currentPath, 'utf8')).version;
       } catch {
         continue;
       }

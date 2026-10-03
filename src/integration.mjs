@@ -1,3 +1,5 @@
+import { validateRegistry } from './domains/resources/registry.mjs';
+import { parseJson as parseJsonText } from './core/json.mjs';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { sha256 } from './core/hash.mjs';
 import { join, relative, resolve, sep } from 'node:path';
@@ -94,7 +96,7 @@ function assertNoSecrets(value, path = '$') {
 function parseJson(text) {
   if (typeof text !== 'string') throw new Error('INTEGRATION_JSON_REQUIRED');
   let parsed;
-  try { parsed = JSON.parse(text); } catch { throw new Error('INTEGRATION_JSON_INVALID'); }
+  try { parsed = parseJsonText(text); } catch { throw new Error('INTEGRATION_JSON_INVALID'); }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('INTEGRATION_JSON_OBJECT_REQUIRED');
   assertNoSecrets(parsed);
   return parsed;
@@ -134,7 +136,7 @@ export function readIntegrationTarget({ workspaceRoot, kind, targetId, relativeP
   const data = readText(root, path);
   let parsed = null;
   if (data.exists) {
-    try { parsed = JSON.parse(data.content); } catch { parsed = null; }
+    try { parsed = parseJsonText(data.content); } catch { parsed = null; }
   }
   let migrationSource = null;
   if (kind === 'platform' && !data.exists) {
@@ -223,7 +225,7 @@ export function buildIntegrationPlan({ workspaceRoot, kind, targetId, mode = 'co
   const current = readText(root, path);
   if (mode === 'pointer') {
     if (!path.endsWith('/current.json')) throw new Error('POINTER_TARGET_REQUIRED');
-    const pointer = JSON.parse(current.content);
+    const pointer = parseJsonText(current.content);
     const actualVersion = pointer?.version;
     if (baselineSha256 !== current.sha256) throw new Error('INTEGRATION_BASELINE_MISMATCH');
     return buildResourcePointerPlan({ workspaceRoot: root, repository: kind, resourceId: targetId, currentVersion: actualVersion, targetVersion, availableVersions, baselineSha256: current.sha256, now });
@@ -231,7 +233,7 @@ export function buildIntegrationPlan({ workspaceRoot, kind, targetId, mode = 'co
   if (mode !== 'registry') throw new Error('RESOURCE_MODE_REQUIRED');
   if (!path.endsWith('/registry.json')) throw new Error('REGISTRY_TARGET_REQUIRED');
   if (current.sha256 !== baselineSha256) throw new Error('INTEGRATION_BASELINE_MISMATCH');
-  parseJson(afterText);
+  validateRegistry(root,kind,afterText);
   if (current.content === afterText) throw new Error('NO_INTEGRATION_CHANGE');
   const plan = basePlan('registry', root, now);
   plan.target = { kind, targetId, mode, path };

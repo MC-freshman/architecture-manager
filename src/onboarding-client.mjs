@@ -1,3 +1,4 @@
+import {parseJson as parseJsonText} from './core/json.mjs';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -12,7 +13,7 @@ import { runOwnedProcess } from './core/owned-process.mjs';
 import { runtimeFile } from './core/runtime-path.mjs';
 
 const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
-const load = (path) => JSON.parse(readFileSync(path, 'utf8'));
+const load = (path) => parseJsonText(readFileSync(path, 'utf8'));
 const canonical = (value) => JSON.stringify(value, Object.keys(value).sort());
 
 export function buildOnboardingClientPlan({ workspaceRoot, platformId, now = new Date().toISOString() }) {
@@ -72,7 +73,7 @@ export async function probeOnboardingClient({ workspaceRoot, platformId }, { reg
   const response = await runOwnedProcess({ python: snapshot.fields.pythonExecutable, executable, args, input: json(request), cwd: directory, timeout: 30000, registerCancel });
   if (response.cancelled) throw new Error('ONBOARDING_CANCELLED');
   if (response.exitCode !== 0) throw new Error('CLIENT_CONNECTION_FAILED');
-  const receipt = JSON.parse(response.stdout); validateClientReceipt(receipt, expected);
+  const receipt = parseJsonText(response.stdout); validateClientReceipt(receipt, expected);
   const fresh = clientBinding(workspaceRoot, platformId);
   if (fresh.configSha256 !== expected.configSha256 || fresh.versionsSha256 !== expected.versionsSha256 || fresh.adapterSha256 !== expected.adapterSha256) throw new Error('INTEGRATION_BASELINE_MISMATCH');
   const result = { schema: 'architecture-manager-client-check/v1', status: 'passed', ...expected, receipt, checkedAt: new Date().toISOString(), nativeVendorClientVerified: false, writePerformed: true };

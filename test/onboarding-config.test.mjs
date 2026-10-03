@@ -1,3 +1,4 @@
+import {seedRuntimeReleases} from './support/resources.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -12,12 +13,7 @@ function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'manager-config-'));
   const auditRoot = join(root, 'audit');
   const put = (name, value) => { mkdirSync(dirname(join(root, name)), { recursive: true }); writeFileSync(join(root, name), value); };
-  for (const [repository, id, version, entry] of [['tool', 'wf-runner', '0.12.0', 'cli.py'], ['tool', 'runtime-contracts', '1.5.0', 'contracts/runtime/validate_contracts.py'], ['tool', 'repo-lint', '0.6.3', 'scripts/repo_lint.py'], ['software', '_connector', '1.0.7', 'connector.py']]) {
-    put(`${repository}/${id}/current.json`, JSON.stringify({ id, version }));
-    put(`${repository}/${id}/versions/${version}/manifest.json`, JSON.stringify({ id, version }));
-    put(`${repository}/${id}/versions/${version}/SHA256SUMS`, 'fixture');
-    put(`${repository}/${id}/versions/${version}/${entry}`, '# fixture');
-  }
+  seedRuntimeReleases(root);
   return { root, auditRoot, put, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 
