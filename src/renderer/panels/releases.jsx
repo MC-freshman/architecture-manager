@@ -15,7 +15,7 @@ export function ReleasePanel({ api, workspace, resources, setPlanPreview, setPla
   const previewRelease = async () => {
     if (!workspace) { setMessage('请先选择工作区。'); return; }
     try {
-      const plan = await api.previewReleasePlan({ workspaceRoot, repository, resourceId, targetVersion, upgradeFrom: upgradeFrom || null, definitionOverride: definitionOverride || null });
+      const plan = await api.previewReleasePlan({ workspaceRoot: workspace, repository, resourceId, targetVersion, upgradeFrom: upgradeFrom || null, definitionOverride: definitionOverride || null });
       setPlanPreview(plan);
       setPlanPayload(null);
       setMessage(`已生成发布计划：${plan.target.destination}（${plan.steps[0].fileCount} 个文件）；发布 ≠ 采纳，指针切换需另生成计划。`);
@@ -25,7 +25,7 @@ export function ReleasePanel({ api, workspace, resources, setPlanPreview, setPla
   };
   const showReferences = async () => {
     try {
-      const result = await api.listResourceReferences({ workspaceRoot, repository, resourceId });
+      const result = await api.listResourceReferences({ workspaceRoot: workspace, repository, resourceId });
       setReferences(result);
       setMessage(`在 ${result.scanned} 个现行发布文件中找到 ${result.references.length} 处提及。`);
     } catch (error) {
@@ -34,8 +34,8 @@ export function ReleasePanel({ api, workspace, resources, setPlanPreview, setPla
   };
   const previewMark = async () => {
     try {
-      const baseline = await api.readRegistryBaseline({ workspaceRoot, kind: markKind });
-      const plan = await api.previewRegistryPlan({ workspaceRoot, kind: markKind, action: 'mark', id: markId, entry: { supersededBy, deprecationNote }, baselineSha256: baseline.sha256 });
+      const baseline = await api.readRegistryBaseline({ workspaceRoot: workspace, kind: markKind });
+      const plan = await api.previewRegistryPlan({ workspaceRoot: workspace, kind: markKind, action: 'mark', id: markId, entry: { supersededBy, deprecationNote }, baselineSha256: baseline.sha256 });
       setPlanPreview(plan);
       setPlanPayload({ afterText: plan.payload.afterText });
       setMessage(`已生成 deprecated 标记计划：${plan.target.description}。尚未写入。`);

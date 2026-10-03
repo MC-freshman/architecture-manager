@@ -26,3 +26,8 @@ export { buildAutomaticOnboardingPlan } from '../onboarding-auto.mjs';
 export { executeOnboardingChecks, cancelOnboarding, markOnboardingRecorded } from '../onboarding-state.mjs';
 export { buildWorkspaceClonePlan, applyWorkspaceClone } from '../workspace-bootstrap.mjs';
 
+
+// Probes and pipelines execute programs or write evidence; never export as queries.
+export { healthSoftware } from '../software.mjs';
+export { runOnboardingPipeline } from '../onboarding.mjs';
+export { detectRuntime } from '../onboarding-runtime.mjs';

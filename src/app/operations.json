@@ -1,0 +1,327 @@
+{
+  "schema": "architecture-manager-operations/v1",
+  "operations": {
+    "confirm": {
+      "channel": "ui:confirm",
+      "phase": "ui"
+    },
+    "getAppVersion": {
+      "channel": "ui:version",
+      "phase": "query"
+    },
+    "getDefaultWorkspace": {
+      "channel": "workspace:default",
+      "phase": "query"
+    },
+    "selectWorkspace": {
+      "channel": "workspace:select",
+      "phase": "ui"
+    },
+    "selectDirectory": {
+      "channel": "workspace:select-directory",
+      "phase": "ui"
+    },
+    "scanWorkspace": {
+      "channel": "workspace:scan",
+      "phase": "query"
+    },
+    "inspectPlatform": {
+      "channel": "platform:inspect",
+      "phase": "query"
+    },
+    "inspectPlatformConnection": {
+      "channel": "platform:connection",
+      "phase": "query"
+    },
+    "refreshPlatform": {
+      "channel": "platform:refresh",
+      "phase": "execute"
+    },
+    "runPlatformCheck": {
+      "channel": "platform:check",
+      "phase": "execute"
+    },
+    "previewPlatformPlan": {
+      "channel": "plan:platform-view",
+      "phase": "plan"
+    },
+    "previewResourcePlan": {
+      "channel": "plan:resource-pointer",
+      "phase": "plan"
+    },
+    "readCatalogEntry": {
+      "channel": "catalog:read",
+      "phase": "query"
+    },
+    "readSkillContent": {
+      "channel": "skill:read",
+      "phase": "query"
+    },
+    "selectCatalog": {
+      "channel": "catalog:select",
+      "phase": "ui"
+    },
+    "previewRegistryPlan": {
+      "channel": "plan:registry",
+      "phase": "plan"
+    },
+    "readDocument": {
+      "channel": "document:read",
+      "phase": "query"
+    },
+    "previewDocumentPlan": {
+      "channel": "plan:document",
+      "phase": "plan"
+    },
+    "softwareHealth": {
+      "channel": "software:health",
+      "phase": "execute"
+    },
+    "previewSoftwarePlan": {
+      "channel": "plan:software",
+      "phase": "plan"
+    },
+    "previewSoftwareImportPlan": {
+      "channel": "plan:software-import",
+      "phase": "plan"
+    },
+    "listSoftwareIntakes": {
+      "channel": "software:intakes",
+      "phase": "query"
+    },
+    "previewSoftwareRecipePlan": {
+      "channel": "plan:software-recipe",
+      "phase": "plan"
+    },
+    "listSoftwareRecoveries": {
+      "channel": "software:recoveries",
+      "phase": "query"
+    },
+    "previewSoftwareRevertPlan": {
+      "channel": "plan:software-revert",
+      "phase": "plan"
+    },
+    "selectSoftwareSource": {
+      "channel": "software:select-source",
+      "phase": "ui"
+    },
+    "openSoftwareLocation": {
+      "channel": "software:open-location",
+      "phase": "execute"
+    },
+    "inspectGit": {
+      "channel": "git:inspect",
+      "phase": "query"
+    },
+    "scanSensitiveFiles": {
+      "channel": "git:sensitive-scan",
+      "phase": "query"
+    },
+    "previewGitPlan": {
+      "channel": "plan:git",
+      "phase": "plan"
+    },
+    "listIntegrationTargets": {
+      "channel": "integration:targets",
+      "phase": "query"
+    },
+    "readIntegrationTarget": {
+      "channel": "integration:read",
+      "phase": "query"
+    },
+    "suggestPlatformBridge": {
+      "channel": "platform:suggest-bridge",
+      "phase": "query"
+    },
+    "previewIntegrationPlan": {
+      "channel": "plan:integration",
+      "phase": "plan"
+    },
+    "listRunLedger": {
+      "channel": "runs:ledger",
+      "phase": "query"
+    },
+    "readDefectBook": {
+      "channel": "defects:read",
+      "phase": "query"
+    },
+    "verifyDefectBook": {
+      "channel": "defects:verify",
+      "phase": "verify"
+    },
+    "inspectInbox": {
+      "channel": "inbox:inspect",
+      "phase": "query"
+    },
+    "readAuditEvents": {
+      "channel": "audit:events",
+      "phase": "query"
+    },
+    "previewDefectBookEditPlan": {
+      "channel": "plan:defect-book-edit",
+      "phase": "plan"
+    },
+    "previewReleasePlan": {
+      "channel": "plan:release",
+      "phase": "plan"
+    },
+    "listResourceReferences": {
+      "channel": "releases:references",
+      "phase": "query"
+    },
+    "readRegistryBaseline": {
+      "channel": "releases:registry-baseline",
+      "phase": "query"
+    },
+    "previewSoftwareConnectorLaunchPlan": {
+      "channel": "plan:software-launch",
+      "phase": "plan"
+    },
+    "parseImplementationTables": {
+      "channel": "plans:parse",
+      "phase": "query"
+    },
+    "buildDocsSite": {
+      "channel": "docs:build",
+      "phase": "execute"
+    },
+    "checkDocsLinks": {
+      "channel": "docs:conform",
+      "phase": "execute"
+    },
+    "documentDiff": {
+      "channel": "document:diff",
+      "phase": "query"
+    },
+    "previewPlatformScaffoldPlan": {
+      "channel": "plan:platform-scaffold",
+      "phase": "plan"
+    },
+    "onboardingDraft": {
+      "channel": "onboarding:draft",
+      "phase": "query"
+    },
+    "onboardingCard": {
+      "channel": "onboarding:card",
+      "phase": "query"
+    },
+    "runOnboardingPipeline": {
+      "channel": "onboarding:pipeline",
+      "phase": "execute"
+    },
+    "readOnboardingConfig": {
+      "channel": "onboarding:config",
+      "phase": "query"
+    },
+    "previewOnboardingConfigPlan": {
+      "channel": "plan:platform-configuration",
+      "phase": "plan"
+    },
+    "selectOnboardingFile": {
+      "channel": "onboarding:select-file",
+      "phase": "ui"
+    },
+    "detectOnboardingRuntime": {
+      "channel": "onboarding:runtime-detect",
+      "phase": "execute"
+    },
+    "previewOnboardingRuntimePlan": {
+      "channel": "plan:platform-runtime",
+      "phase": "plan"
+    },
+    "previewOnboardingBackendPlan": {
+      "channel": "plan:platform-backend",
+      "phase": "plan"
+    },
+    "previewOnboardingClientPlan": {
+      "channel": "plan:platform-client",
+      "phase": "plan"
+    },
+    "probeOnboardingClient": {
+      "channel": "onboarding:client-probe",
+      "phase": "execute"
+    },
+    "previewOnboardingProvidersPlan": {
+      "channel": "plan:platform-providers",
+      "phase": "plan"
+    },
+    "probeOnboardingCapabilities": {
+      "channel": "onboarding:capability-probe",
+      "phase": "execute"
+    },
+    "previewOnboardingAttestationPlan": {
+      "channel": "plan:platform-attestation",
+      "phase": "plan"
+    },
+    "previewOnboardingGovernancePlan": {
+      "channel": "plan:platform-governance",
+      "phase": "plan"
+    },
+    "readOnboardingState": {
+      "channel": "onboarding:state",
+      "phase": "query"
+    },
+    "cancelOnboarding": {
+      "channel": "onboarding:cancel",
+      "phase": "execute"
+    },
+    "markOnboardingRecorded": {
+      "channel": "onboarding:recorded",
+      "phase": "execute"
+    },
+    "previewOnboardingFinalizePlan": {
+      "channel": "plan:platform-finalize",
+      "phase": "plan"
+    },
+    "previewAutomaticOnboardingPlan": {
+      "channel": "plan:platform-onboarding",
+      "phase": "plan"
+    },
+    "previewWorkspaceClonePlan": {
+      "channel": "plan:workspace-clone",
+      "phase": "plan"
+    },
+    "applyWorkspaceClone": {
+      "channel": "workspace:clone",
+      "phase": "execute"
+    },
+    "applyPlan": {
+      "channel": "transaction:apply",
+      "phase": "execute"
+    },
+    "verifyPlan": {
+      "channel": "transaction:verify",
+      "phase": "verify"
+    }
+  },
+  "planKinds": [
+    "platform-scaffold",
+    "platform-configuration",
+    "platform-backend",
+    "platform-runtime",
+    "platform-client",
+    "platform-providers",
+    "platform-attestation",
+    "platform-governance",
+    "platform-finalize",
+    "platform-onboarding",
+    "document-edit",
+    "defect-book-edit",
+    "resource-pointer",
+    "platform-view",
+    "registry-edit",
+    "integration-config",
+    "integration-registry",
+    "software-import",
+    "software-recipe-publish",
+    "software-revert",
+    "git-commit",
+    "git-branch",
+    "git-tag",
+    "git-push",
+    "git-rollback",
+    "git-backup",
+    "release-publish",
+    "software-launch"
+  ]
+}

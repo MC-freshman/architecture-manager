@@ -2,7 +2,6 @@
 export { inspectPlatformDirectory, scanWorkspace } from '../inventory.mjs';
 export { inspectRegistration, readCatalogEntry, readSkillContent } from '../catalog.mjs';
 export { readDocument } from '../documents.mjs';
-export { healthSoftware } from '../software.mjs';
 export { inspectGit, scanSensitiveFiles } from '../git.mjs';
 export { listIntegrationTargets, readIntegrationTarget, suggestPlatformBridge } from '../integration.mjs';
 export { inspectPlatformConnection } from '../platform-check.mjs';
@@ -17,8 +16,6 @@ export { listResourceReferences, readRegistryBaseline } from '../releases.mjs';
 export { parseImplementationTables } from '../plans-center.mjs';
 export { diffDocument } from '../docs-ops.mjs';
 export { governanceOnboardingDraft, buildOnboardingCard } from '../onboarding.mjs';
-export { runOnboardingPipeline } from '../onboarding.mjs';
 export { readOnboardingConfig } from '../onboarding-config.mjs';
-export { detectRuntime } from '../onboarding-runtime.mjs';
 export { readOnboardingState } from '../onboarding-state.mjs';
 

@@ -5,7 +5,7 @@ export function DocumentPanel({ api, workspace, documentSummaries, visibleDocume
   const showDiff = async () => {
     if (!workspace || !selectedDocument) return;
     try {
-      const result = await api.documentDiff({ workspaceRoot, relativePath: selectedDocument.path });
+      const result = await api.documentDiff({ workspaceRoot: workspace, relativePath: selectedDocument.path });
       setDiff(result);
       setMessage(result.empty ? '该文档当前没有未提交的 Git 改动。' : `已读取 ${selectedDocument.path} 的 Git 差异（只读）。`);
     } catch (error) {

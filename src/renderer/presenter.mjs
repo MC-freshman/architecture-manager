@@ -1,33 +1,5 @@
-export const PLAN_WRITE_KINDS = [
-  'platform-scaffold',
-  'platform-configuration',
-  'platform-backend',
-  'platform-runtime',
-  'platform-client',
-  'platform-providers',
-  'platform-attestation',
-  'platform-governance',
-  'platform-finalize',
-  'platform-onboarding',
-  'document-edit',
-  'defect-book-edit',
-  'resource-pointer',
-  'platform-view',
-  'registry-edit',
-  'integration-config',
-  'integration-registry',
-  'software-import',
-  'software-recipe-publish',
-  'software-revert',
-  'git-commit',
-  'git-branch',
-  'git-tag',
-  'git-push',
-  'git-rollback',
-  'git-backup',
-  'release-publish',
-  'software-launch'
-];
+import declarations from '../app/operations.json' with { type: 'json' };
+export const PLAN_WRITE_KINDS = Object.freeze(declarations.planKinds);
 
 export function friendlyError(error) {
   const code = String(error?.message ?? error);

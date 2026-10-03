@@ -1,3 +1,4 @@
+import { operationRegistrar } from './electron/operation-registry.mjs';
 import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron';
 import { existsSync, statSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -92,55 +93,56 @@ function rememberWorkspace(root) {
 }
 
 function registerIpc() {
+  const handleOperation = operationRegistrar(ipcMain);
   const owned = async (input, operation) => {
     const control = startOnboardingJob(input.workspaceRoot, input.platformId);
     try { return await lifecycle.track(() => operation(control.registerCancel)); } finally { control.finish(); }
   };
-  ipcMain.handle('ui:version', () => app.getVersion());
-  ipcMain.handle('ui:confirm', async (_event, message) => {
+  handleOperation('ui:version', () => app.getVersion());
+  handleOperation('ui:confirm', async (_event, message) => {
     const result = await dialog.showMessageBox({ type: 'question', title: '确认操作', message: String(message), buttons: ['取消', '确认'], defaultId: 0, cancelId: 0 });
     return result.response === 1;
   });
-  ipcMain.handle('workspace:default', () => defaultWorkspace || (existsSync(preferences().lastWorkspace || '') ? preferences().lastWorkspace : null));
-  ipcMain.handle('workspace:select', async () => {
+  handleOperation('workspace:default', () => defaultWorkspace || (existsSync(preferences().lastWorkspace || '') ? preferences().lastWorkspace : null));
+  handleOperation('workspace:select', async () => {
     const result = await dialog.showOpenDialog({
       title: '选择架构工作区',
       properties: ['openDirectory', 'createDirectory']
     });
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
-  ipcMain.handle('workspace:select-directory', async () => {
+  handleOperation('workspace:select-directory', async () => {
     const result = await dialog.showOpenDialog({ title: '选择平台目录', properties: ['openDirectory'] });
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
-  ipcMain.handle('workspace:scan', (_event, root) => { const result = scanWorkspace(root); rememberWorkspace(result.workspaceRoot); return result; });
-  ipcMain.handle('platform:refresh', (_event, input) => refreshPlatformInventory(input));
-  ipcMain.handle('platform:inspect', (_event, input) => inspectPlatformDirectory(input.workspaceRoot, input.platformId, input.directoryRelative));
-  ipcMain.handle('platform:connection', (_event, input) => inspectPlatformConnection(input));
-  ipcMain.handle('platform:check', (event, input) => owned(input, (registerCancel) => runPlatformCheck({ ...input, registerCancel, onProgress: (progress) => event.sender.send('transaction:progress', progress) })));
-  ipcMain.handle('plan:platform-view', (_event, input) => buildPlatformViewPlan(input));
-  ipcMain.handle('plan:resource-pointer', (_event, input) => buildResourcePointerPlan(input));
-  ipcMain.handle('catalog:read', (_event, input) => readCatalogEntry(input));
-  ipcMain.handle('skill:read', (_event, input) => readSkillContent(input));
-  ipcMain.handle('catalog:select', async (_event, input) => {
+  handleOperation('workspace:scan', (_event, root) => { const result = scanWorkspace(root); rememberWorkspace(result.workspaceRoot); return result; });
+  handleOperation('platform:refresh', (_event, input) => refreshPlatformInventory(input));
+  handleOperation('platform:inspect', (_event, input) => inspectPlatformDirectory(input.workspaceRoot, input.platformId, input.directoryRelative));
+  handleOperation('platform:connection', (_event, input) => inspectPlatformConnection(input));
+  handleOperation('platform:check', (event, input) => owned(input, (registerCancel) => runPlatformCheck({ ...input, registerCancel, onProgress: (progress) => event.sender.send('transaction:progress', progress) })));
+  handleOperation('plan:platform-view', (_event, input) => buildPlatformViewPlan(input));
+  handleOperation('plan:resource-pointer', (_event, input) => buildResourcePointerPlan(input));
+  handleOperation('catalog:read', (_event, input) => readCatalogEntry(input));
+  handleOperation('skill:read', (_event, input) => readSkillContent(input));
+  handleOperation('catalog:select', async (_event, input) => {
     const result = await dialog.showOpenDialog({ title: input.kind === 'agent' ? '选择 agent 仓内的资源目录' : '选择 tool/_registry 下的技能目录 JSON', defaultPath: join(input.workspaceRoot, input.kind === 'agent' ? 'agent' : 'tool/_registry'), properties: [input.kind === 'agent' ? 'openDirectory' : 'openFile'], ...(input.kind === 'skill' ? { filters: [{ name: '技能目录', extensions: ['json'] }] } : {}) });
     return result.canceled ? null : inspectRegistration({ ...input, selectedPath: result.filePaths[0] });
   });
-  ipcMain.handle('plan:registry', (_event, input) => buildRegistryPlan(input));
-  ipcMain.handle('document:read', (_event, input) => readDocument(input.workspaceRoot, input.relativePath));
-  ipcMain.handle('plan:document', (_event, input) => buildDocumentPlan(input));
-  ipcMain.handle('software:health', (_event, input) => healthSoftware(input.workspaceRoot, input.softwareId));
-  ipcMain.handle('plan:software', (_event, input) => buildSoftwareLaunchPlan(input));
-  ipcMain.handle('plan:software-import', (_event, input) => buildSoftwareImportPlan(input));
-  ipcMain.handle('software:intakes', (_event, input) => listSoftwareIntakes(input));
-  ipcMain.handle('plan:software-recipe', (_event, input) => buildSoftwareRecipePlan(input));
-  ipcMain.handle('software:recoveries', (_event, input) => listSoftwareRecoveries(input));
-  ipcMain.handle('plan:software-revert', (_event, input) => buildSoftwareRevertPlan(input));
-  ipcMain.handle('software:select-source', async (_event, kind) => {
+  handleOperation('plan:registry', (_event, input) => buildRegistryPlan(input));
+  handleOperation('document:read', (_event, input) => readDocument(input.workspaceRoot, input.relativePath));
+  handleOperation('plan:document', (_event, input) => buildDocumentPlan(input));
+  handleOperation('software:health', (_event, input) => healthSoftware(input.workspaceRoot, input.softwareId));
+  handleOperation('plan:software', (_event, input) => buildSoftwareLaunchPlan(input));
+  handleOperation('plan:software-import', (_event, input) => buildSoftwareImportPlan(input));
+  handleOperation('software:intakes', (_event, input) => listSoftwareIntakes(input));
+  handleOperation('plan:software-recipe', (_event, input) => buildSoftwareRecipePlan(input));
+  handleOperation('software:recoveries', (_event, input) => listSoftwareRecoveries(input));
+  handleOperation('plan:software-revert', (_event, input) => buildSoftwareRevertPlan(input));
+  handleOperation('software:select-source', async (_event, kind) => {
     const result = await dialog.showOpenDialog({ title: kind === 'unpacked-directory' ? '选择已解压的软件目录' : '选择下载的软件文件', properties: [kind === 'unpacked-directory' ? 'openDirectory' : 'openFile'] });
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
-  ipcMain.handle('software:open-location', async (_event, input) => {
+  handleOperation('software:open-location', async (_event, input) => {
     const plan = buildSoftwareLaunchPlan({ workspaceRoot: input.workspaceRoot, softwareId: input.softwareId, platformId: input.platformId, mode: 'open-location' });
     if (!plan.target.bodyPath || !existsSync(plan.target.bodyPath) || !statSync(plan.target.bodyPath).isDirectory()) throw new Error('SOFTWARE_BODY_PATH_NOT_FOUND');
     if (input.expectedPath !== plan.target.bodyPath) throw new Error('EXTERNAL_CHANGE_DETECTED');
@@ -148,55 +150,55 @@ function registerIpc() {
     if (error) throw new Error(`SOFTWARE_LOCATION_OPEN_FAILED:${error}`);
     return { ...plan, status: 'opened', writePerformed: false };
   });
-  ipcMain.handle('git:inspect', (_event, root) => inspectGit(root));
-  ipcMain.handle('git:sensitive-scan', (_event, root) => scanSensitiveFiles(root));
-  ipcMain.handle('plan:git', (_event, input) => buildGitPlan(input));
-  ipcMain.handle('integration:targets', (_event, input) => listIntegrationTargets(input));
-  ipcMain.handle('integration:read', (_event, input) => readIntegrationTarget(input));
-  ipcMain.handle('platform:suggest-bridge', (_event, input) => suggestPlatformBridge(input));
-  ipcMain.handle('plan:integration', (_event, input) => buildIntegrationPlan(input));
-  ipcMain.handle('runs:ledger', (_event, root) => listRunLedger(root));
-  ipcMain.handle('defects:read', (_event, root) => readDefectBook(root));
-  ipcMain.handle('defects:verify', (_event, root) => verifyDefectBook(root));
-  ipcMain.handle('inbox:inspect', (_event, root) => inspectInbox(root));
-  ipcMain.handle('audit:events', (_event, input) => readAuditEvents({ limit: input?.limit }));
-  ipcMain.handle('plan:defect-book-edit', (_event, input) => buildDefectBookEditPlan(input));
-  ipcMain.handle('plan:release', (_event, input) => buildReleasePlan(input));
-  ipcMain.handle('releases:references', (_event, input) => listResourceReferences(input.workspaceRoot, input.repository, input.resourceId));
-  ipcMain.handle('releases:registry-baseline', (_event, input) => readRegistryBaseline(input.workspaceRoot, input.kind));
-  ipcMain.handle('plan:software-launch', (_event, input) => buildSoftwareConnectorLaunchPlan(input));
-  ipcMain.handle('plans:parse', (_event, root) => parseImplementationTables(root));
-  ipcMain.handle('docs:build', (_event, root) => buildDocsSite(root));
-  ipcMain.handle('docs:conform', (_event, root) => checkDocsLinks(root));
-  ipcMain.handle('document:diff', (_event, input) => diffDocument(input.workspaceRoot, input.relativePath));
-  ipcMain.handle('plan:platform-scaffold', (_event, input) => buildPlatformScaffoldPlan(input));
-  ipcMain.handle('onboarding:config', (_event, input) => readOnboardingConfig(input));
-  ipcMain.handle('plan:platform-configuration', (_event, input) => buildOnboardingConfigPlan(input));
-  ipcMain.handle('onboarding:runtime-detect', (_event, input) => detectRuntime(input));
-  ipcMain.handle('plan:platform-runtime', (_event, input) => buildOnboardingRuntimePlan(input));
-  ipcMain.handle('plan:platform-backend', (_event, input) => buildOnboardingBackendPlan(input));
-  ipcMain.handle('plan:platform-client', (_event, input) => buildOnboardingClientPlan(input));
-  ipcMain.handle('plan:platform-providers', (_event, input) => buildOnboardingProvidersPlan(input));
-  ipcMain.handle('onboarding:capability-probe', (event, input) => owned(input, (registerCancel) => probeOnboardingCapabilities(input, { registerCancel, onProgress: (progress) => event.sender.send('transaction:progress', progress) })));
-  ipcMain.handle('plan:platform-attestation', (_event, input) => buildOnboardingAttestationPlan(input));
-  ipcMain.handle('onboarding:client-probe', (_event, input) => owned(input, (registerCancel) => probeOnboardingClient(input, { registerCancel })));
-  ipcMain.handle('onboarding:select-file', async () => {
+  handleOperation('git:inspect', (_event, root) => inspectGit(root));
+  handleOperation('git:sensitive-scan', (_event, root) => scanSensitiveFiles(root));
+  handleOperation('plan:git', (_event, input) => buildGitPlan(input));
+  handleOperation('integration:targets', (_event, input) => listIntegrationTargets(input));
+  handleOperation('integration:read', (_event, input) => readIntegrationTarget(input));
+  handleOperation('platform:suggest-bridge', (_event, input) => suggestPlatformBridge(input));
+  handleOperation('plan:integration', (_event, input) => buildIntegrationPlan(input));
+  handleOperation('runs:ledger', (_event, root) => listRunLedger(root));
+  handleOperation('defects:read', (_event, root) => readDefectBook(root));
+  handleOperation('defects:verify', (_event, root) => verifyDefectBook(root));
+  handleOperation('inbox:inspect', (_event, root) => inspectInbox(root));
+  handleOperation('audit:events', (_event, input) => readAuditEvents({ limit: input?.limit }));
+  handleOperation('plan:defect-book-edit', (_event, input) => buildDefectBookEditPlan(input));
+  handleOperation('plan:release', (_event, input) => buildReleasePlan(input));
+  handleOperation('releases:references', (_event, input) => listResourceReferences(input.workspaceRoot, input.repository, input.resourceId));
+  handleOperation('releases:registry-baseline', (_event, input) => readRegistryBaseline(input.workspaceRoot, input.kind));
+  handleOperation('plan:software-launch', (_event, input) => buildSoftwareConnectorLaunchPlan(input));
+  handleOperation('plans:parse', (_event, root) => parseImplementationTables(root));
+  handleOperation('docs:build', (_event, root) => buildDocsSite(root));
+  handleOperation('docs:conform', (_event, root) => checkDocsLinks(root));
+  handleOperation('document:diff', (_event, input) => diffDocument(input.workspaceRoot, input.relativePath));
+  handleOperation('plan:platform-scaffold', (_event, input) => buildPlatformScaffoldPlan(input));
+  handleOperation('onboarding:config', (_event, input) => readOnboardingConfig(input));
+  handleOperation('plan:platform-configuration', (_event, input) => buildOnboardingConfigPlan(input));
+  handleOperation('onboarding:runtime-detect', (_event, input) => detectRuntime(input));
+  handleOperation('plan:platform-runtime', (_event, input) => buildOnboardingRuntimePlan(input));
+  handleOperation('plan:platform-backend', (_event, input) => buildOnboardingBackendPlan(input));
+  handleOperation('plan:platform-client', (_event, input) => buildOnboardingClientPlan(input));
+  handleOperation('plan:platform-providers', (_event, input) => buildOnboardingProvidersPlan(input));
+  handleOperation('onboarding:capability-probe', (event, input) => owned(input, (registerCancel) => probeOnboardingCapabilities(input, { registerCancel, onProgress: (progress) => event.sender.send('transaction:progress', progress) })));
+  handleOperation('plan:platform-attestation', (_event, input) => buildOnboardingAttestationPlan(input));
+  handleOperation('onboarding:client-probe', (_event, input) => owned(input, (registerCancel) => probeOnboardingClient(input, { registerCancel })));
+  handleOperation('onboarding:select-file', async () => {
     const result = await dialog.showOpenDialog({ title: '选择解释器、客户端入口或配置文件', properties: ['openFile'] });
     return result.canceled ? null : result.filePaths[0];
   });
-  ipcMain.handle('onboarding:draft', (_event, input) => governanceOnboardingDraft(input.workspaceRoot, input.platformId));
-  ipcMain.handle('onboarding:card', (_event, input) => buildOnboardingCard(input.workspaceRoot, input.platformId));
-  ipcMain.handle('onboarding:pipeline', (event, input) => lifecycle.track(() => executeOnboardingChecks(input, { onProgress: (progress) => event.sender.send('transaction:progress', progress) })));
-  ipcMain.handle('onboarding:state', (_event, input) => readOnboardingState(input));
-  ipcMain.handle('onboarding:cancel', (_event, input) => cancelOnboarding(input));
-  ipcMain.handle('onboarding:recorded', (_event, input) => markOnboardingRecorded(input));
-  ipcMain.handle('plan:platform-governance', (_event, input) => buildOnboardingGovernancePlan(input));
-  ipcMain.handle('plan:platform-finalize', (_event, input) => buildOnboardingFinalizePlan(input));
-  ipcMain.handle('plan:platform-onboarding', (_event, input) => buildAutomaticOnboardingPlan(input));
-  ipcMain.handle('plan:workspace-clone', (_event, input) => buildWorkspaceClonePlan(input));
-  ipcMain.handle('workspace:clone', (_event, input) => applyWorkspaceClone({ plan: input.plan }, { actor: 'local-user', now: new Date().toISOString() }));
-  ipcMain.handle('transaction:apply', (event, input) => lifecycle.track(() => applyPlan({ ...input, onProgress: (progress) => event.sender.send('transaction:progress', progress) })));
-  ipcMain.handle('transaction:verify', (_event, input) => verifyPlanTarget(input));
+  handleOperation('onboarding:draft', (_event, input) => governanceOnboardingDraft(input.workspaceRoot, input.platformId));
+  handleOperation('onboarding:card', (_event, input) => buildOnboardingCard(input.workspaceRoot, input.platformId));
+  handleOperation('onboarding:pipeline', (event, input) => lifecycle.track(() => executeOnboardingChecks(input, { onProgress: (progress) => event.sender.send('transaction:progress', progress) })));
+  handleOperation('onboarding:state', (_event, input) => readOnboardingState(input));
+  handleOperation('onboarding:cancel', (_event, input) => cancelOnboarding(input));
+  handleOperation('onboarding:recorded', (_event, input) => markOnboardingRecorded(input));
+  handleOperation('plan:platform-governance', (_event, input) => buildOnboardingGovernancePlan(input));
+  handleOperation('plan:platform-finalize', (_event, input) => buildOnboardingFinalizePlan(input));
+  handleOperation('plan:platform-onboarding', (_event, input) => buildAutomaticOnboardingPlan(input));
+  handleOperation('plan:workspace-clone', (_event, input) => buildWorkspaceClonePlan(input));
+  handleOperation('workspace:clone', (_event, input) => applyWorkspaceClone({ plan: input.plan }, { actor: 'local-user', now: new Date().toISOString() }));
+  handleOperation('transaction:apply', (event, input) => lifecycle.track(() => applyPlan({ ...input, onProgress: (progress) => event.sender.send('transaction:progress', progress) })));
+  handleOperation('transaction:verify', (_event, input) => verifyPlanTarget(input));
 }
 
 function createWindow() {

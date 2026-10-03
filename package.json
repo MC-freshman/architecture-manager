@@ -6,14 +6,16 @@
   "main": "src/main.mjs",
   "description": "Standalone local architecture workspace manager",
   "engines": {
-    "node": ">=18"
+    "node": ">=24"
   },
   "scripts": {
     "scan": "node src/cli.mjs",
     "test": "node --test",
-    "build:ui": "vite build",
+    "build:ui": "npm run generate:preload && npm run lint && vite build",
     "start": "npm run build:ui && electron .",
-    "package:win": "npm run build:ui && electron-builder --win nsis portable --publish never"
+    "package:win": "npm run build:ui && electron-builder --win nsis portable --publish never",
+    "generate:preload": "node scripts/generate-preload.mjs",
+    "lint": "eslint src scripts"
   },
   "dependencies": {
     "react": "^19.3.0",
@@ -23,6 +25,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "electron": "^44.5.0",
     "electron-builder": "^26.15.3",
+    "eslint": "10.12.0",
     "vite": "^8.3.1"
   },
   "build": {
