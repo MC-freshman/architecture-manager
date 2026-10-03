@@ -1,3 +1,4 @@
+import {restoreOwnedFiles} from './transactions/recovery.mjs';
 import { validateRegistry } from './domains/resources/registry.mjs';
 import { parseJson } from './core/json.mjs';
 import { existsSync, readFileSync, mkdirSync, rmSync, statSync } from 'node:fs';
@@ -78,7 +79,8 @@ function applyPlatformView(plan, context) {
     const event = writeAudit({ ...context, transactionId: id, plan, action: 'platform-view', status: 'applied', target: `platform:${platformId}`, oldSha256: sha256(before), newSha256: sha256(after), checkpointSha256: saved.sha256, checkpointPath: saved.path, writePerformed: true });
     return output(event, saved.path);
   } catch (error) {
-    if (existsSync(saved.path)) atomicWrite(target, before, `${id}-restore`);
+    const recovered=restoreOwnedFiles([{target,before,afterSha256:sha256(after)}],id);
+    if(!recovered.ok) throw Object.assign(new Error('RECOVERY_EXTERNAL_CHANGE'),{checkpointPath:saved.path,recovery:recovered});
     throw Object.assign(new Error(String(error?.message ?? error)), { checkpointPath: saved.path });
   }
 }
@@ -107,7 +109,8 @@ function applyRegistry(plan, afterText, context) {
     if (actual !== expectedNew) throw new Error('VERIFY_FAILED');
     return output(writeAudit({ ...context, transactionId: id, plan, action: 'registry-edit', status: 'applied', target: relativeTarget, oldSha256: expectedOld, newSha256: expectedNew, checkpointSha256: saved.sha256, checkpointPath: saved.path, writePerformed: true }), saved.path);
   } catch (error) {
-    if (existsSync(saved.path)) atomicWrite(target, before, `${id}-restore`);
+    const recovered=restoreOwnedFiles([{target,before,afterSha256:expectedNew}],id);
+    if(!recovered.ok) throw Object.assign(new Error('RECOVERY_EXTERNAL_CHANGE'),{checkpointPath:saved.path,recovery:recovered});
     throw Object.assign(new Error(String(error?.message ?? error)), { checkpointPath: saved.path });
   }
 }
@@ -144,7 +147,8 @@ function applyDocument(plan, afterText, context) {
     const event = writeAudit({ ...context, transactionId: id, plan, action: 'document-edit', status: 'applied', target: relativeTarget, oldSha256: expectedOld, newSha256: expectedNew, checkpointSha256: saved.sha256, checkpointPath: saved.path, writePerformed: true });
     return output(event, saved.path);
   } catch (error) {
-    if (existsSync(saved.path)) atomicWrite(target, readFileSync(saved.path, 'utf8'), `${id}-restore`);
+    const recovered=restoreOwnedFiles([{target,before,afterSha256:expectedNew}],id);
+    if(!recovered.ok) {writeAudit({...context,transactionId:id,plan,action:plan.kind,status:'failed-external-change',target:relativeTarget,checkpointPath:saved.path,error:'RECOVERY_EXTERNAL_CHANGE'});throw Object.assign(new Error('RECOVERY_EXTERNAL_CHANGE'),{checkpointPath:saved.path,recovery:recovered});}
     const event = writeAudit({ ...context, transactionId: id, plan, action: 'document-edit', status: 'recovered-after-failure', target: relativeTarget, oldSha256: expectedOld, newSha256: expectedNew, checkpointSha256: saved.sha256, checkpointPath: saved.path, error: String(error?.message ?? error) });
     throw Object.assign(new Error(String(error?.message ?? error)), { audit: event, checkpointPath: saved.path });
   }
@@ -176,7 +180,8 @@ function applyDefectBook(plan, afterText, context) {
     if (actual !== expectedNew) throw new Error('VERIFY_FAILED');
     return output(writeAudit({ ...context, transactionId: id, plan, action: 'defect-book-edit', status: 'applied', target: relativeTarget, oldSha256: expectedOld, newSha256: expectedNew, checkpointSha256: saved.sha256, checkpointPath: saved.path, writePerformed: true }), saved.path);
   } catch (error) {
-    if (existsSync(saved.path)) atomicWrite(target, readFileSync(saved.path, 'utf8'), `${id}-restore`);
+    const recovered=restoreOwnedFiles([{target,before,afterSha256:expectedNew}],id);
+    if(!recovered.ok) {writeAudit({...context,transactionId:id,plan,action:plan.kind,status:'failed-external-change',target:relativeTarget,checkpointPath:saved.path,error:'RECOVERY_EXTERNAL_CHANGE'});throw Object.assign(new Error('RECOVERY_EXTERNAL_CHANGE'),{checkpointPath:saved.path,recovery:recovered});}
     throw Object.assign(new Error(String(error?.message ?? error)), { checkpointPath: saved.path });
   }
 }
@@ -216,7 +221,8 @@ function applyPointer(plan, context) {
     const event = writeAudit({ ...context, transactionId: id, plan, action: 'resource-pointer', status: 'applied', target: targetRelative, oldSha256: step.oldSha256, newSha256: sha256(after), checkpointSha256: saved.sha256, checkpointPath: saved.path, writePerformed: true });
     return output(event, saved.path);
   } catch (error) {
-    if (existsSync(saved.path)) atomicWrite(target, readFileSync(saved.path, 'utf8'), `${id}-restore`);
+    const recovered=restoreOwnedFiles([{target,before,afterSha256:typeof expectedNew==='string' && /^[0-9a-f]{64}$/.test(expectedNew)?expectedNew:sha256(after)}],id);
+    if(!recovered.ok) {writeAudit({...context,transactionId:id,plan,action:plan.kind,status:'failed-external-change',target:targetRelative,checkpointPath:saved.path,error:'RECOVERY_EXTERNAL_CHANGE'});throw Object.assign(new Error('RECOVERY_EXTERNAL_CHANGE'),{checkpointPath:saved.path,recovery:recovered});}
     const event = writeAudit({ ...context, transactionId: id, plan, action: 'resource-pointer', status: 'recovered-after-failure', target: targetRelative, oldSha256: step.oldSha256, newSha256: sha256(after), checkpointSha256: saved.sha256, checkpointPath: saved.path, error: String(error?.message ?? error) });
     throw Object.assign(new Error(String(error?.message ?? error)), { audit: event, checkpointPath: saved.path });
   }
@@ -269,9 +275,8 @@ function applyIntegration(plan, afterText, context) {
     const event = writeAudit({ ...context, transactionId: id, plan, action: plan.kind, status: 'applied', target: targetRelative, oldSha256: expectedOld, newSha256: expectedNew, checkpointSha256: saved.sha256, checkpointPath: saved.path, writePerformed: true });
     return output(event, saved.path);
   } catch (error) {
-    if (companion && companionSaved && existsSync(companionSaved.path)) atomicWrite(companion, companionBefore, `${id}-runner-restore`);
-    if (exists) atomicWrite(target, before, `${id}-restore`);
-    else if (existsSync(target)) rmSync(target, { force: true });
+    const recovered=restoreOwnedFiles([{target,before:exists?before:null,afterSha256:expectedNew},...(companion?[{target:companion,before:companionBefore,afterSha256:companionStep.newSha256}]:[])],id);
+    if(!recovered.ok) {writeAudit({...context,transactionId:id,plan,action:plan.kind,status:'failed-external-change',target:targetRelative,checkpointPath:saved.path,error:'RECOVERY_EXTERNAL_CHANGE'});throw Object.assign(new Error('RECOVERY_EXTERNAL_CHANGE'),{checkpointPath:saved.path,recovery:recovered});}
     const event = writeAudit({ ...context, transactionId: id, plan, action: plan.kind, status: 'recovered-after-failure', target: targetRelative, oldSha256: expectedOld, newSha256: expectedNew, checkpointSha256: saved.sha256, checkpointPath: saved.path, error: String(error?.message ?? error) });
     throw Object.assign(new Error(String(error?.message ?? error)), { audit: event, checkpointPath: saved.path });
   }

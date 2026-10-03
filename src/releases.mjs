@@ -1,4 +1,5 @@
 import {parseJson as parseJsonText} from './core/json.mjs';
+import {removeOwnedDirectory} from './transactions/recovery.mjs';
 import { validateResourceContent } from './domains/resources/contracts.mjs';
 import { validateFrozenResource } from './domains/resources/versions.mjs';
 import { verifyFrozenDirectory } from './domains/resources/integrity.mjs';
@@ -185,7 +186,10 @@ export function applyRelease(plan, context) {
     const event = writeAudit({ ...context, transactionId: id, plan, action: 'release-publish', status: 'applied', target: destination, newSha256: plan.steps[0].sumsSha256, writePerformed: true });
     return output(event);
   } catch (error) {
-    if (created && existsSync(versionRoot)) rmSync(versionRoot, { recursive: true, force: true });
+    if (created && existsSync(versionRoot)) {
+      const expected=new Map([...plan.payload.files.map(file=>[file.path,sha256(file.content)]),...(plan.payload.copyFrom?.files || []).map(file=>[file.path,file.sha256]),['SHA256SUMS',sha256(plan.payload.sums)]]);
+      if(!removeOwnedDirectory(versionRoot,expected).ok) throw Object.assign(new Error('RECOVERY_EXTERNAL_CHANGE'),{originalError:error.message});
+    }
     throw Object.assign(new Error(String(error?.message ?? error)), {});
   }
 }

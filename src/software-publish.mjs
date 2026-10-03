@@ -1,3 +1,4 @@
+import {restoreOwnedFiles,removeOwnedDirectory} from './transactions/recovery.mjs';
 import {parseJson as parseJsonText} from './core/json.mjs';
 import { compareStableVersions } from './core/versions.mjs';
 import { verifyFrozenDirectory } from './domains/resources/integrity.mjs';
@@ -251,14 +252,11 @@ export function applySoftwareRecipe({ plan }, { probeVersion = probe, verifyPubl
     const audit = writeAudit({ auditRoot, transactionId, plan, actor, action: 'software-recipe-publish', status, target: target.path, newSha256: sha(payload.files.SHA256SUMS), checkpointSha256: checkpoint.sha256, checkpointPath: checkpoint.path, writePerformed: true, now });
     return { ...verification, status, check, writePerformed: true, audit, checkpointPath: checkpoint.path, transactionId };
   } catch (error) {
-    if (connectorWritten) atomicText(target.connectorConfigPath, oldConnector, `${plan.planId}-restore`);
-    if (registryWritten) atomicText(registryPath, oldRegistry, `${plan.planId}-restore`);
-    if (pointerWritten) {
-      if (oldPointerText) atomicText(pointerPath, oldPointerText, `${plan.planId}-restore`);
-      else if (existsSync(pointerPath)) rmSync(pointerPath, { force: true });
-    }
+    const recovered=restoreOwnedFiles([...(connectorWritten?[{target:target.connectorConfigPath,before:oldConnector,afterSha256:sha(payload.connector)}]:[]),...(registryWritten?[{target:registryPath,before:oldRegistry,afterSha256:sha(payload.registry)}]:[]),...(pointerWritten?[{target:pointerPath,before:oldPointerText || null,afterSha256:sha(payload.pointer)}]:[])],transactionId);
+    if(!recovered.ok) {writeAudit({auditRoot,transactionId,plan,actor,action:plan.kind,status:'failed-external-change',target:target.path,checkpointPath:checkpoint.path,error:'RECOVERY_EXTERNAL_CHANGE',now});throw Object.assign(new Error('RECOVERY_EXTERNAL_CHANGE'),{checkpointPath:checkpoint.path,recovery:recovered});}
     if (releaseCreated && existsSync(target.path)) {
-      rmSync(target.path, { recursive: true, force: true });
+      const removed=removeOwnedDirectory(target.path,new Map(Object.entries(payload.files).map(([name,bytes])=>[name,sha(bytes)])));
+      if(!removed.ok) throw Object.assign(new Error('RECOVERY_EXTERNAL_CHANGE'),{checkpointPath:checkpoint.path,recovery:removed});
       for (const emptyParent of [releaseParent, dirname(releaseParent)]) {
         try { rmdirSync(emptyParent); } catch { /* Preserve a nonempty directory. */ }
       }

@@ -1,4 +1,6 @@
 import {parseJson as parseJsonText} from './core/json.mjs';
+import {removeOwnedDirectory} from './transactions/recovery.mjs';
+import {sha256} from './core/hash.mjs';
 import { createHash } from 'node:crypto';
 import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
@@ -111,13 +113,15 @@ export function applySoftwareImport({ plan }, { actor = 'local-user', auditRoot 
   const bodyStage = mkdtempSync(join(runtimeParent, '.body-stage-'));
   let backupCommitted = false;
   let bodyCommitted = false;
+  let backupManifestText = null;
   try {
     copyRows(source, join(backupStage, 'payload'), intakeKind, plan.rows, onProgress, 'backup');
     assertRows(join(backupStage, 'payload'), plan.rows);
     copyRows(join(backupStage, 'payload'), bodyStage, 'unpacked-directory', plan.rows, onProgress, 'restore-and-body');
     assertRows(bodyStage, plan.rows);
     const manifest = { schema: 'architecture-manager-software-backup/v1', platformId: plan.target.platformId, softwareId: plan.target.softwareId, sourceName: basename(source), intakeKind, files: plan.rows, restoreDrill: { performed: true, verifiedFiles: plan.rows.length, at: new Date().toISOString() }, target };
-    writeFileSync(join(backupStage, 'MANIFEST.json'), `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' });
+    backupManifestText = `${JSON.stringify(manifest, null, 2)}\n`;
+    writeFileSync(join(backupStage, 'MANIFEST.json'), backupManifestText, { flag: 'wx' });
     renameSync(backupStage, backup);
     backupCommitted = true;
     renameSync(bodyStage, target);
@@ -126,8 +130,14 @@ export function applySoftwareImport({ plan }, { actor = 'local-user', auditRoot 
     const audit = writeAudit({ auditRoot, transactionId, plan, actor, action: 'software-import', status: 'applied', target, newSha256: createHash('sha256').update(JSON.stringify(plan.rows)).digest('hex'), checkpointSha256: checkpoint.sha256, checkpointPath: checkpoint.path, writePerformed: true, now });
     return { ...output(audit, checkpoint.path), status: 'staged-awaiting-recipe', audit, platformId: plan.target.platformId, softwareId: plan.target.softwareId, target, backup, files: plan.rows.length, restored: true };
   } catch (error) {
-    if (bodyCommitted && existsSync(target)) rmSync(target, { recursive: true, force: true });
-    if (backupCommitted && existsSync(backup)) rmSync(backup, { recursive: true, force: true });
+    const bodyExpected=new Map(plan.rows.map(row=>[row.path,row.sha256]));
+    const backupExpected=new Map([...plan.rows.map(row=>['payload/'+row.path,row.sha256]),['MANIFEST.json',sha256(backupManifestText || '')]]);
+    const destinations=[...(bodyCommitted?[{path:target,expected:bodyExpected}]:[]),...(backupCommitted?[{path:backup,expected:backupExpected}]:[])];
+    if(destinations.some(destination=>!removeOwnedDirectory(destination.path,destination.expected,{remove:false}).ok)) {
+      const audit=writeAudit({auditRoot,transactionId,plan,actor,action:plan.kind,status:'failed-external-change',target,checkpointPath:checkpoint.path,error:'RECOVERY_EXTERNAL_CHANGE',now});
+      throw Object.assign(new Error('RECOVERY_EXTERNAL_CHANGE'),{audit,checkpointPath:checkpoint.path});
+    }
+    for(const destination of destinations) if(!removeOwnedDirectory(destination.path,destination.expected).ok) throw Object.assign(new Error('RECOVERY_EXTERNAL_CHANGE'),{checkpointPath:checkpoint.path});
     const audit = writeAudit({ auditRoot, transactionId, plan, actor, action: 'software-import', status: 'recovered-after-failure', target, checkpointSha256: checkpoint.sha256, checkpointPath: checkpoint.path, error: String(error?.message || error), now });
     throw Object.assign(error, { audit, checkpointPath: checkpoint.path });
   } finally {
