@@ -439,7 +439,9 @@ export default function App() {
     if (action === 'tag') input.tag = window.prompt('输入新标签名', '') || '';
     if (action === 'push') input.remote = window.prompt('输入远端名称', 'origin') || '';
     if (action === 'rollback') input.commit = window.prompt('输入要回滚的提交 SHA（将生成 revert 计划）', '') || '';
-    if (action === 'backup') input.backupName = window.prompt('输入备份名称', `before-${new Date().toISOString().slice(0, 10)}`) || '';
+    if (action === 'backup') { input.backupMode='history'; input.platformId=window.prompt('选择备份归属平台：'+(inventory?.platforms || []).map(item=>item.id).join('、'),inventory?.platforms?.[0]?.id || '') || ''; }
+    if (action === 'snapshot') { input.action='backup'; input.backupMode='snapshot'; }
+    if (action === 'backup' || action === 'snapshot') input.backupName = window.prompt('输入备份名称', `before-${new Date().toISOString().slice(0, 10)}`) || '';
     try {
       const plan = await api.previewGitPlan(input);
       setPlanPreview(plan);

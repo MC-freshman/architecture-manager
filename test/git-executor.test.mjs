@@ -109,14 +109,16 @@ test('export backup writes the archive and SHA256SUMS under inbox/archive', () =
   assert.ok(existsSync(sums));
   const archivePath = join(fixture.root, 'inbox', 'archive', 'night-1', 'repo.zip');
   const digest = sha256(readFileSync(archivePath));
-  assert.equal(readFileSync(sums, 'utf8'), `${digest}  repo.zip\n`);
+  assert.ok(readFileSync(sums, 'utf8').includes(`${digest}  repo.zip\n`));
+  assert.equal(JSON.parse(readFileSync(join(fixture.root,plan.target.destination,'MANIFEST.json'),'utf8')).restoreVerified,true);
   assert.equal(verifyPlanTarget({ plan }).ok, true);
   assert.throws(() => buildGitPlan({ workspaceRoot: fixture.root, action: 'backup', backupName: '../escape' }), /INVALID_BACKUP_NAME/);
   cleanup(fixture);
 });
 
-test('push without a remote fails with a structured git error and an audit row', () => {
+test('a configured but unreachable local remote fails with a structured git error and an audit row', () => {
   const fixture = makeRepo();
+  git(fixture.root,['remote','add','origin',join(fixture.root,'missing.git')]);
   const plan = buildGitPlan({ workspaceRoot: fixture.root, action: 'push', remote: 'origin' });
   assert.throws(() => applyPlan({ plan, auditRoot: fixture.auditRoot }), /GIT_COMMAND_FAILED/);
   const events = readFileSync(join(fixture.auditRoot, 'events.jsonl'), 'utf8').trim().split('\n').map((line) => JSON.parse(line));

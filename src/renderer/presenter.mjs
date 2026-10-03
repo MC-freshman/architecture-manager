@@ -5,6 +5,11 @@ export function friendlyError(error) {
   const code = String(error?.message ?? error);
   const [key, ...details] = code.split(':');
   const hints = {
+    INVALID_REMOTE: '请选择这个仓库已经配置的远端名称，不能填写推送选项或不存在的远端。',
+    GIT_ROLLBACK_DIRTY: '当前还有未提交或暂存的文件。请先提交或备份并处理这些改动，再生成回滚计划。',
+    GIT_BACKUP_PLATFORM_REQUIRED: '历史备份需要选择一个已存在的平台作为备份归属。',
+    GIT_BACKUP_ALREADY_EXISTS: '这个备份目录已经存在，请填写新的备份名称；管理台不会覆盖旧备份。',
+    PUSH_BLOCKED_SENSITIVE: '即将推送的提交中发现凭据、本体或大文件，请处理后重新预览。',
     APPLICATION_CLOSING: '管理台正在停止本次任务并保存中止证据，请等待窗口关闭。',
     GIT_IDENTITY_REQUIRED: '请在接入向导的登记页填写 Git 提交姓名和邮箱，再点击预览一键接入／继续。这是提交署名，无需输入 GitHub 密码。',
     ONBOARDING_CANCELLED: '本次检查已停止，所属进程树已回收。已保存的配置和证据保留，可从向导继续。',

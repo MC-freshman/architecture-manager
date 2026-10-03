@@ -1,24 +1,17 @@
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { createHash } from 'node:crypto';
-import { join, relative, resolve, sep } from 'node:path';
+import { gitRaw, gitText } from './infrastructure/git.mjs';
+import { parseGitStatus, assertConfiguredRemote } from './domains/git/state.mjs';
+import { scanPaths } from './domains/git/sensitive.mjs';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 
 const SHA = /^[0-9a-f]{7,40}$/i;
-const SECRET = /(password|passwd|api[_-]?key|access[_-]?token|secret|private[_-]?key)\s*[:=]/i;
-const SKIP_PARTS = new Set(['node_modules', 'dist', 'build', '.git']);
 const GIT_REF_NAME = /^[A-Za-z0-9._/-]{1,120}$/;
 
 function git(root, args) {
-  return execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', shell: false, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  return gitText(root,args);
 }
 
-function pathRel(root, target) {
-  return relative(root, target).split(sep).join('/');
-}
 
-function parseStatus(status) {
-  return status.split(/\r?\n/).filter(Boolean).map((line) => ({ code: line.slice(0, 2), path: line.slice(3) }));
-}
 
 export function inspectGit(root) {
   const result = { isRepository: false, branch: null, head: null, upstream: null, ahead: null, behind: null, remotes: [], status: [], error: null };
@@ -27,7 +20,7 @@ export function inspectGit(root) {
     if (!result.isRepository) return result;
     result.branch = git(root, ['branch', '--show-current']) || null;
     result.head = git(root, ['rev-parse', 'HEAD']);
-    result.status = parseStatus(git(root, ['status', '--short']));
+    result.status = parseGitStatus(gitRaw(root, ['status', '--porcelain=v1', '-z', '--untracked-files=all']));
     result.remotes = git(root, ['remote', '-v']).split(/\r?\n/).filter(Boolean).map((line) => line.trim());
     try {
       result.upstream = git(root, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}']);
@@ -44,29 +37,14 @@ export function inspectGit(root) {
 }
 
 function changedPaths(root) {
-  return inspectGit(root).status.map((item) => item.path.split(' -> ').at(-1));
+  return inspectGit(root).status.map((item) => item.path);
 }
 
 export function scanSensitiveFiles(root) {
-  const findings = [];
-  for (const relativePath of changedPaths(root)) {
-    const absolutePath = resolve(root, relativePath);
-    if (!existsSync(absolutePath) || !statSync(absolutePath).isFile()) continue;
-    if (relativePath.split('/').some((part) => SKIP_PARTS.has(part))) continue;
-    const size = statSync(absolutePath).size;
-    if (size > 10 * 1024 * 1024) {
-      findings.push({ path: relativePath, kind: 'large-file', bytes: size });
-      continue;
-    }
-    const buffer = readFileSync(absolutePath);
-    if (buffer.includes(0)) continue;
-    const text = buffer.toString('utf8');
-    if (SECRET.test(text) || text.includes('-----BEGIN PRIVATE KEY-----')) findings.push({ path: relativePath, kind: 'possible-secret', bytes: size });
-  }
-  return { schema: 'architecture-manager-sensitive-scan/v1', clean: findings.length === 0, findings, writePerformed: false };
+  return {schema:'architecture-manager-sensitive-scan/v1',...scanPaths(root,changedPaths(root)),writePerformed:false};
 }
 
-export function buildGitPlan({ workspaceRoot, action, message = '', remote = 'origin', branch = '', tag = '', commit = '', backupName = '', paths = [], now = new Date().toISOString() }) {
+export function buildGitPlan({ workspaceRoot, action, message = '', remote = 'origin', branch = '', tag = '', commit = '', backupName = '', backupMode = 'snapshot', platformId = '', paths = [], now = new Date().toISOString() }) {
   if (!['commit', 'branch', 'tag', 'push', 'rollback', 'backup'].includes(action)) throw new Error('INVALID_GIT_ACTION');
   const inspected = inspectGit(workspaceRoot);
   if (!inspected.isRepository || !inspected.head) throw new Error('GIT_REPOSITORY_REQUIRED');
@@ -95,21 +73,25 @@ export function buildGitPlan({ workspaceRoot, action, message = '', remote = 'or
     if (!GIT_REF_NAME.test(tag) || tag.startsWith('-') || tag.includes('..')) throw new Error('INVALID_TAG_NAME');
     plan.steps.push({ operation: 'create-tag', tag, command: ['git', 'tag', tag] });
   } else if (action === 'push') {
-    if (!/^[A-Za-z0-9._/-]+$/.test(remote)) throw new Error('INVALID_REMOTE');
+    assertConfiguredRemote(workspaceRoot,remote);
     plan.steps.push({ operation: 'push', remote, force: false, command: ['git', 'push', remote] });
   } else if (action === 'rollback') {
     if (!SHA.test(commit)) throw new Error('INVALID_COMMIT_SHA');
+    if (inspected.status.length) throw new Error('GIT_ROLLBACK_DIRTY');
     plan.steps.push({ operation: 'revert-commit', commit, command: ['git', 'revert', '--no-edit', commit], destructive: false });
   } else {
     if (!/^[A-Za-z0-9._-]{1,80}$/.test(backupName)) throw new Error('INVALID_BACKUP_NAME');
-    const destination = `inbox/archive/${backupName}`;
+    if (!['snapshot','history'].includes(backupMode)) throw new Error('INVALID_BACKUP_MODE');
+    if(backupMode==='history' && (!/^[a-z][a-z0-9-]{1,30}$/.test(platformId) || !existsSync(join(workspaceRoot,platformId)))) throw new Error('GIT_BACKUP_PLATFORM_REQUIRED');
+    const destination = backupMode==='history' ? `inbox/backup/${platformId}/${backupName}` : `inbox/archive/${backupName}`;
+    plan.target.backupMode=backupMode;plan.target.platformId=platformId;plan.target.label=backupMode==='history' ? 'Git 历史与未提交内容备份（需恢复验证）' : '仅 HEAD 文件快照（不是历史备份）';
     plan.target.destination = destination;
-    plan.steps.push({ operation: 'export-backup', destination, command: ['git', 'archive', '--format=zip', '-o', `${destination}/repo.zip`, 'HEAD'] });
+    plan.steps.push({ operation: 'export-backup', backupMode, destination, command: backupMode==='history' ? ['git','bundle','create',`${destination}/source.bundle`,'--all'] : ['git','-c','core.autocrlf=false','archive','--format=zip','-o',`${destination}/repo.zip`,'HEAD'] });
   }
   return plan;
 }
 
-function validateStagedPaths(paths) {
+export function validateStagedPaths(paths) {
   if (!Array.isArray(paths)) throw new Error('GIT_ADD_ALL_FORBIDDEN');
   const forbidden = new Set(['.', './', '-A', '--all', '..', ':/', '*']);
   const staged = [];
@@ -117,7 +99,7 @@ function validateStagedPaths(paths) {
     if (typeof raw !== 'string') throw new Error('GIT_ADD_ALL_FORBIDDEN');
     const trimmed = raw.trim();
     if (!trimmed) continue;
-    if (forbidden.has(trimmed) || trimmed.startsWith('-') || trimmed.includes('..') || /^[A-Za-z]:[\\/]/.test(trimmed) || trimmed.startsWith('/') || trimmed.startsWith('\\')) {
+    if (forbidden.has(trimmed) || trimmed.startsWith('-') || trimmed.includes('..') || /[*?\[\]\0]/.test(trimmed) || /^[A-Za-z]:[\\/]/.test(trimmed) || trimmed.startsWith('/') || trimmed.startsWith('\\')) {
       throw new Error('GIT_ADD_ALL_FORBIDDEN');
     }
     const normalized = trimmed.split('\\').join('/');
@@ -126,20 +108,4 @@ function validateStagedPaths(paths) {
   return staged;
 }
 
-export function scanSensitivePaths(root, paths) {
-  const findings = [];
-  for (const relativePath of paths) {
-    const absolutePath = resolve(root, relativePath);
-    if (!existsSync(absolutePath) || !statSync(absolutePath).isFile()) continue;
-    const size = statSync(absolutePath).size;
-    if (size > 10 * 1024 * 1024) {
-      findings.push({ path: relativePath, kind: 'large-file', bytes: size });
-      continue;
-    }
-    const buffer = readFileSync(absolutePath);
-    if (buffer.includes(0)) continue;
-    const text = buffer.toString('utf8');
-    if (SECRET.test(text) || text.includes('-----BEGIN PRIVATE KEY-----')) findings.push({ path: relativePath, kind: 'possible-secret', bytes: size });
-  }
-  return { clean: findings.length === 0, findings };
-}
+export function scanSensitivePaths(root,paths) { return scanPaths(root,paths); }

@@ -1,19 +1,21 @@
+import { assertConfiguredRemote, assertSelectedIndex } from './domains/git/state.mjs';
+import { scanIndex, scanOutgoing } from './domains/git/sensitive.mjs';
+import { createGitBackup, verifyGitBackup } from './domains/git/backup.mjs';
+import { validateStagedPaths } from './git.mjs';
+import {gitRaw,gitText} from './infrastructure/git.mjs';
 // Git command executors (3.5.0 P3). Plans are built by buildGitPlan; this module
 // executes them with argument-array git calls (never shell:true), a HEAD
 // staleness check, an explicit-path commit red line (no add -A/.), a sensitive
 // scan before commits, force-free push, revert --no-edit only, and backups
 // written under inbox/archive with a SHA256SUMS.
-import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { scanSensitivePaths } from './git.mjs';
 import { defaultAuditRoot } from './core/paths.mjs';
 import { makeId, output, requirePlan, writeAudit } from './transactions/kernel.mjs';
 
 function run(root, args, timeoutMs = 120000) {
   try {
-    return execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', shell: false, stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs }).trim();
+    return gitText(root,args,{timeout:timeoutMs});
   } catch (error) {
     const detail = [error.stderr, error.stdout].map((value) => String(value ?? '').trim()).filter(Boolean).join(' | ');
     throw new Error(`GIT_COMMAND_FAILED:${detail.slice(0, 400) || String(error?.message ?? error)}`);
@@ -32,11 +34,16 @@ export function applyGitTransaction({ plan, actor = 'local-user', auditRoot = de
   const succeed = (target, extra = {}) => output(writeAudit({ ...context, transactionId: id, plan, action: plan.kind, status: 'applied', target, writePerformed: true, ...extra }));
   try {
     if (plan.kind === 'git-commit') {
-      const scan = scanSensitivePaths(root, step.paths);
+      const paths=validateStagedPaths(step.paths);
+      if(!paths.length) throw new Error('COMMIT_PATHS_REQUIRED');
+      assertSelectedIndex(root,paths);
+      const scan = scanSensitivePaths(root, paths);
       if (!scan.clean) throw Object.assign(new Error('COMMIT_BLOCKED_SENSITIVE'), { findings: scan.findings });
-      run(root, ['add', '--', ...step.paths]);
+      run(root, ['add', '--', ...paths]);
+      assertSelectedIndex(root,paths);
+      if(!scanIndex(root,paths).clean) throw new Error('COMMIT_BLOCKED_SENSITIVE');
       const identityOptions = step.identity ? ['-c', `user.name=${step.identity.name}`, '-c', `user.email=${step.identity.email}`] : [];
-      run(root, [...identityOptions, 'commit', '-m', step.message]);
+      run(root, [...identityOptions, 'commit', '--only', '-m', step.message, '--', ...paths]);
       const head = run(root, ['rev-parse', 'HEAD']);
       return succeed(`HEAD:${head.slice(0, 12)}`, { oldSha256: headBefore, newSha256: head });
     }
@@ -49,24 +56,23 @@ export function applyGitTransaction({ plan, actor = 'local-user', auditRoot = de
       return succeed(`tag:${step.tag}`);
     }
     if (plan.kind === 'git-push') {
+      assertConfiguredRemote(root,step.remote);
+      if(step.force!==false) throw new Error('INVALID_REMOTE');
+      const outgoing=scanOutgoing(root,step.remote);
+      if(!outgoing.clean) throw Object.assign(new Error('PUSH_BLOCKED_SENSITIVE'),{findings:outgoing.findings});
       run(root, ['push', step.remote], 300000);
       return succeed(`remote:${step.remote}`);
     }
     if (plan.kind === 'git-rollback') {
-      run(root, ['revert', '--no-edit', step.commit]);
+      if(gitRaw(root,['status','--porcelain=v1','-z'])!=='') throw new Error('GIT_ROLLBACK_DIRTY');
+      try { run(root, ['revert', '--no-edit', step.commit]); }
+      catch(error) { try {run(root,['revert','--abort']);} catch { /* no active revert */ } throw error; }
       const head = run(root, ['rev-parse', 'HEAD']);
       return succeed(`HEAD:${head.slice(0, 12)}`, { oldSha256: headBefore, newSha256: head });
     }
     if (plan.kind === 'git-backup') {
-      const destinationRoot = resolve(root, 'inbox', 'archive');
-      const destination = resolve(root, plan.target.destination);
-      if (!destination.startsWith(destinationRoot)) throw new Error('GIT_BACKUP_DESTINATION_INVALID');
-      mkdirSync(destination, { recursive: true });
-      const archivePath = join(destination, 'repo.zip');
-      run(root, ['archive', '--format=zip', '-o', archivePath, 'HEAD']);
-      const digest = createHash('sha256').update(readFileSync(archivePath)).digest('hex');
-      writeFileSync(join(destination, 'SHA256SUMS'), `${digest}  repo.zip\n`, 'utf8');
-      return succeed(plan.target.destination, { newSha256: digest });
+      const backup=createGitBackup(root,plan);
+      return succeed(plan.target.destination,{newSha256:backup.sha256,backupMode:backup.backupMode,restoreVerified:backup.restoreVerified});
     }
     throw new Error('TRANSACTION_KIND_UNSUPPORTED');
   } catch (error) {
@@ -96,8 +102,8 @@ export function verifyGitTransaction({ plan }) {
       return describe(count === '0', { aheadCount: Number(count) });
     }
     if (plan.kind === 'git-backup') {
-      const sums = join(root, plan.target.destination, 'SHA256SUMS');
-      return describe(existsSync(sums), { sumsPath: sums });
+      const verification=verifyGitBackup(root,plan);
+      return describe(verification.ok,verification);
     }
     return describe(false, { error: 'TRANSACTION_KIND_UNSUPPORTED' });
   } catch (error) {
